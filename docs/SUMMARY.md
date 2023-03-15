@@ -1,0 +1,9 @@
+* reference
+    * compartmental
+        * [generic_model](reference/compartmental/generic_model.md)
+        * parameters
+            * [parameters_manager](reference/compartmental/parameters/parameters_manager.md)
+        * [util](reference/compartmental/util.md)
+* examples
+    * examples
+        * [SEIR](examples/SEIR.md)

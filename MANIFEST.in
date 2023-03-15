@@ -1,0 +1,10 @@
+include README.md
+include LICENSE
+include setup.cfg
+include setup.py
+
+graft compartmental/*
+graft examples/*
+
+prune compartmental.egg-info
+prune */__pycache__
