@@ -20,7 +20,7 @@ import numpy
 
 seir_model = {
     "simulation": {
-        "n_simulations": 1000000,
+        "n_simulations": 100000,
         "n_executions": 1,
         "n_steps": 230
     },
@@ -54,7 +54,7 @@ seir_model = {
         "compartiments" : ["R"]
     },
     "results": {
-        "save_percentage": 0.01
+        "save_percentage": 0.1
     }
 }
 
@@ -73,12 +73,21 @@ SeirModel.evolve = evolve
 sample, sample_params = gcm.util.get_model_sample_trajectory(SeirModel, **{"betta": 0.2, "Io":6e-5})
 
 
-# SeirModel.run(sample[SeirModel.compartiment_name_to_index["R"]], "seir.data")
+SeirModel.run(sample[SeirModel.compartiment_name_to_index["R"]], "seir.data")
 
 results = gcm.util.load_parameters("seir.data")
 weights = numpy.exp(-results[0]/numpy.min(results[0]))
 
 percentiles = gcm.util.get_percentiles_from_results(SeirModel, results, 30, 70)
+try:
+    # In case cupy is used
+    percentiles = percentiles.get()
+    sample = sample.get()
+    weights = weights.get()
+    results = results.get()
+    sample_params = sample_params.get()
+except AttributeError:
+    pass
 
 plt.figure()
 plt.fill_between(numpy.arange(percentiles.shape[2]), percentiles[0,0], percentiles[0,2], alpha=0.3)

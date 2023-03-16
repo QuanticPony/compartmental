@@ -32,7 +32,7 @@ def get_best_parameters(params, log_diff, save_percentage):
 
     log_diff_index_sorted = CNP.argpartition(log_diff, save_count, 0)[0:save_count]
     
-    saved_params[:,:] = CNP.take(params, log_diff_index_sorted, 1).T
+    saved_params[:,:] = CNP.take(params, log_diff_index_sorted, 1)[:,:,0].T
     saved_log_diff[:] = CNP.take(log_diff, log_diff_index_sorted)
     return saved_params, saved_log_diff
 
@@ -62,7 +62,12 @@ def save_parameters_no_diff(file: str, params_names: list[str], params: list[lis
         execution_number (int, optional): Number of the execution. If `0` the header is printed. Defaults to 0.
     """
     with open(file, 'a' if execution_number!=0 else 'w') as file_out:
-        CNP.savetxt(file_out, params.T, delimiter=',', comments='', header=",".join(params_names) if execution_number==0 else "")
+        import numpy as np
+        try:
+            _params = CNP.asnumpy(params)
+        except Exception:
+            _params = params
+        np.savetxt(file_out, params.T, delimiter=',', comments='', header=",".join(params_names) if execution_number==0 else "")
 
 
 def save_parameters(file: str, params_names: list[str], params: list[list[float]], log_diff: list[float], *, execution_number=0):
@@ -76,8 +81,16 @@ def save_parameters(file: str, params_names: list[str], params: list[list[float]
         execution_number (int, optional): Number of the execution. If `0` the header is printed. Defaults to 0.
     """
     with open(file, 'a' if execution_number!=0 else 'w') as file_out:
-        CNP.savetxt(file_out, CNP.concatenate((log_diff, params), 1) , delimiter=',', comments='', header=",".join(["log_diff", *params_names]) if execution_number==0 else "")
+        import numpy as np
+        try:
+            np.savetxt(file_out, CNP.asnumpy(CNP.concatenate((log_diff, params), 1)) , delimiter=',', comments='', header=",".join(["log_diff", *params_names]) if execution_number==0 else "")
+        except Exception as e:
+            print(e)
+            _log_diff = log_diff
+            _params = params
+            np.savetxt(file_out, np.concatenate((_log_diff, _params), 1) , delimiter=',', comments='', header=",".join(["log_diff", *params_names]) if execution_number==0 else "")
 
+        
 def load_parameters(file: str):
     """Loads parameters from file with the same format as `save_parameters` and `save_parameters_no_diff`.
 
@@ -88,8 +101,9 @@ def load_parameters(file: str):
         (list[list[float]]): Parameters array. First index selects the column (parameter).
     """
     with open(file, 'r') as file_in:
-        results = CNP.loadtxt(file_in, delimiter=',', skiprows=1).T
-    return results
+        import numpy as np
+        results = np.loadtxt(file_in, delimiter=',', skiprows=1).T
+    return CNP.asarray(results)
 
 
 def get_model_sample_trajectory(model, *args, **kargs):
@@ -148,10 +162,10 @@ def get_percentiles_from_results(model, results, p_minor=5, p_max=95, *args, **k
     def inner(model, step, reference, reference_mask, *args, **kargs):
         model.evolve(model, step, *args, **kargs)
         aux = CNP.take(model.state, reference_mask, 0)
-        
-        results_percentiles[:, 0, step] += CNP.percentile(aux, p_minor, 1)
-        results_percentiles[:, 1, step] += CNP.median(aux, 1)
-        results_percentiles[:, 2, step] += CNP.percentile(aux, p_max, 1)
+        aux_sorted = CNP.sort(aux)
+        results_percentiles[:, 0, step] += CNP.percentile(aux_sorted, p_minor, 1)
+        results_percentiles[:, 1, step] += CNP.median(aux_sorted, 1)
+        results_percentiles[:, 2, step] += CNP.percentile(aux_sorted, p_max, 1)
         
     def outer(model, *args, **kargs):
         ...
