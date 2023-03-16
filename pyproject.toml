@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "compartmental"
-version = "0.0.1"
+version = "0.0.2"
 requires-python = ">=3.8"
 
 description = ""
@@ -31,7 +31,7 @@ dependencies = ['numpy']
 "Documentation" = "https://${USERNAME}/.github.io/compartmental/"
 
 [tool.bumpver]
-current_version = "0.0.1"
+current_version = "0.0.2"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message = "Update version: {old_version} -> {new_version}"
 commit = true
