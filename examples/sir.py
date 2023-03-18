@@ -21,7 +21,7 @@ import numpy
 sir_model = {
     "simulation": {
         "n_simulations": 100000,
-        "n_executions": 10,
+        "n_executions": 1,
         "n_steps": 130
     },
     "compartiments": {
@@ -36,23 +36,35 @@ sir_model = {
     },
     "params": {
         "betta": {
-            "min": 0.3,
-            "max": 0.4
+            "min": 0.1,
+            "max": 0.4,
+            "min_limit": 0.1,
+            "max_limit": 0.4
         },
         "mu": {
             "min": 0.01,
-            "max": 0.1
+            "max": 0.2,
+            "min_limit": 0.01,
+            "max_limit": 0.2
         },
         "Io": {
             "min": 1e-6,
-            "max": 1e-2
+            "max": 1e-4,
+            "min_limit": 1e-7,
+            "max_limit": 1e-2
+        },
+        "To": {
+            "type": "int",
+            "min": -5,
+            "max": 5
         }
     },
     "fixed_params": {
         "K_mean": 1
     },
     "reference": {
-        "compartiments" : ["R"]
+        "compartiments" : ["R"],
+        "offset": "To"
     },
     "results": {
         "save_percentage": 0.1
@@ -61,7 +73,7 @@ sir_model = {
 
 SirModel = gcm.GenericModel(sir_model)
 
-def evolve(m, *_):
+def evolve(m, *args, **kargs):
     p_infected = m.betta * m.K_mean * m.I
     
     m.R += m.mu * m.I
@@ -70,43 +82,84 @@ def evolve(m, *_):
     
 SirModel.evolve = evolve
 
+sample, sample_params = gcm.util.get_model_sample_trajectory(SirModel, **{"To":-2, "betta":0.2, "mu":0.08, "Io": 1e-5})
 
 
-sample, sample_params = gcm.util.get_model_sample_trajectory(SirModel)
+ITERS = 7
+# This array is created to store min and max of params configuration in order to see the adjustment in action.
+saved_params_lims = numpy.zeros((len(SirModel.configuration["params"]), 2, ITERS))
 
-print(sample_params)
-# print(sample)
+# Main loop of adjustments:
+# 1. Run
+# 2. Read results
+# 3. Compute weights
+# 4. Adjuts configuration
+for i in range(ITERS):
+    SirModel.run(sample[SirModel.compartiment_name_to_index["R"]], "sir_temp.data")
+    
+    results = gcm.util.load_parameters("sir_temp.data")
+    weights = numpy.exp(-results[0]/numpy.min(results[0]))
+    
+    gcm.util.auto_adjust_model_params(SirModel, results, weights, adjust=[""])
+    
+    # Needed to see the max and min evolution in the adjustment
+    for p, v in SirModel.configuration["params"].items():
+        saved_params_lims[SirModel.param_to_index[p], 0, i] = v["min"]
+        saved_params_lims[SirModel.param_to_index[p], 1, i] = v["max"]
 
-# plt.plot(sample[:,0], color='green')
-# plt.plot(sample[:,1], color='red')
-# plt.plot(sample[:,2], color='black')
-# plt.show()
-
-# SirModel.populate_model_compartiments()
-# SirModel.populate_model_parameters()
+# Plot evolution of the parameters adjustment
+for i, (k,v) in enumerate(SirModel.configuration["params"].items()):
+    plt.figure()
+    plt.title(k)
+    plt.fill_between(range(ITERS), saved_params_lims[i, 0, :], saved_params_lims[i, 1, :])
+    
+# Update for final photo with 3M samples
+SirModel.configuration.update({
+    "simulation": {
+        "n_simulations": 1000000,
+        "n_executions": 3,
+        "n_steps": 130
+    },
+    "results": {
+        "save_percentage": 0.01
+    }
+})
 
 SirModel.run(sample[SirModel.compartiment_name_to_index["R"]], "sir.data")
-
-
 
 results = gcm.util.load_parameters("sir.data")
 weights = numpy.exp(-results[0]/numpy.min(results[0]))
 
-percentiles = gcm.util.get_percentiles_from_results(SirModel, results, 30, 70)
+percentiles = gcm.util.get_percentiles_from_results(SirModel, results, 30, 70)#, weights)
+try:
+    # In case cupy is used
+    percentiles = percentiles.get()
+    sample = sample.get()
+    weights = weights.get()
+    results = results.get()
+    sample_params = sample_params.get()
+except AttributeError:
+    pass
 
 plt.figure()
 plt.fill_between(numpy.arange(percentiles.shape[2]), percentiles[0,0], percentiles[0,2], alpha=0.3)
-plt.plot(sample[SirModel.compartiment_name_to_index["S"]])
-plt.plot(sample[SirModel.compartiment_name_to_index["I"]])
-plt.plot(sample[SirModel.compartiment_name_to_index["R"]])
-plt.plot(numpy.arange(percentiles.shape[2]), percentiles[0,0])
-plt.plot(numpy.arange(percentiles.shape[2]), percentiles[0,1])
-plt.plot(numpy.arange(percentiles.shape[2]), percentiles[0,2])
+plt.plot(sample[SirModel.compartiment_name_to_index["S"]], 'green')
+plt.plot(sample[SirModel.compartiment_name_to_index["I"]], 'orange')
+plt.plot(sample[SirModel.compartiment_name_to_index["R"]], 'brown')
+plt.plot(numpy.arange(percentiles.shape[2]), percentiles[0,1], '--', color='purple')
 
 
 fig, *axes = plt.subplots(1, len(results)-1)
 for i, ax in enumerate(axes[0], 1):
+    _5, _50, _95 = gcm.util.weighted_quantile(results[i], [5, 50, 95], weights)
     ax.hist(results[i], weights=weights)
-    ax.vlines(sample_params[i-1], *ax.get_ylim())
+    ax.vlines(sample_params[i-1], *ax.get_ylim(), 'red')
+    ax.vlines(_5, *ax.get_ylim(), 'green')
+    ax.vlines(_50, *ax.get_ylim(), 'black')
+    ax.vlines(_95, *ax.get_ylim(), 'purple')
     
 plt.show()
+
+
+values = gcm.util.get_trajecty_selector(SirModel, results, weights, sample[SirModel.compartiment_name_to_index["R"]])
+print(values)

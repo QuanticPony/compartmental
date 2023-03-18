@@ -7,3 +7,4 @@
 * examples
     * examples
         * [SEIR](examples/SEIR.md)
+        * [SIR](examples/SIR.md)
