@@ -14,6 +14,7 @@
 
 import __future__
 from io import TextIOWrapper
+import matplotlib.pyplot as plt
 
 from typing import TYPE_CHECKING
 
@@ -63,9 +64,9 @@ def save_parameters_no_diff(file: str, params_names: list[str], params: list[lis
     """
     with open(file, 'a' if execution_number!=0 else 'w') as file_out:
         import numpy as np
-        try:
+        if np != CNP:
             _params = CNP.asnumpy(params)
-        except Exception:
+        else:
             _params = params
         np.savetxt(file_out, params.T, delimiter=',', comments='', header=",".join(params_names) if execution_number==0 else "")
 
@@ -82,10 +83,9 @@ def save_parameters(file: str, params_names: list[str], params: list[list[float]
     """
     with open(file, 'a' if execution_number!=0 else 'w') as file_out:
         import numpy as np
-        try:
+        if np != CNP:
             np.savetxt(file_out, CNP.asnumpy(CNP.concatenate((log_diff, params), 1)) , delimiter=',', comments='', header=",".join(["log_diff", *params_names]) if execution_number==0 else "")
-        except Exception as e:
-            print(e)
+        else:
             _log_diff = log_diff
             _params = params
             np.savetxt(file_out, np.concatenate((_log_diff, _params), 1) , delimiter=',', comments='', header=",".join(["log_diff", *params_names]) if execution_number==0 else "")
@@ -132,7 +132,45 @@ def get_model_sample_trajectory(model, *args, **kargs):
     return saved_state.T, model.params[:, 0]
 
 
-def get_percentiles_from_results(model, results, p_minor=5, p_max=95, *args, **kargs):
+def weighted_quantile(values, quantiles, sample_weight=None, values_sorted=False, old_style=False):
+    """From: https://stackoverflow.com/a/29677616
+    
+    Very close to numpy.percentile, but supports weights.
+    NOTE: quantiles should be in [0, 100]!
+    
+    Args:
+        values (list[float]): Array with data.
+        quantiles (list[float]): Array with many quantiles needed.
+        sample_weight (list[float], optional): Array of the same length as `array`. Defaults to None.
+        values_sorted (bool): If True, then will avoid sorting of initial array.
+        old_style (bool): If True, will correct output to be consistent with numpy.percentile.
+        
+    Returns:
+        (list[float]): Array with computed quantiles.
+    """
+    quantiles = CNP.array(quantiles, dtype=CNP.float64)
+    quantiles /= 100.
+    
+    if sample_weight is None:
+        sample_weight = CNP.ones(len(values))
+    sample_weight = CNP.array(sample_weight)
+
+    if not values_sorted:
+        sorter = CNP.argsort(values)
+        values = values[sorter]
+        sample_weight = sample_weight[sorter]
+
+    weighted_quantiles = CNP.cumsum(sample_weight) - 0.5 * sample_weight
+    if old_style:
+        # To be convenient with numpy.percentile
+        weighted_quantiles -= weighted_quantiles[0]
+        weighted_quantiles /= weighted_quantiles[-1]
+    else:
+        weighted_quantiles /= CNP.sum(sample_weight)
+    return CNP.interp(quantiles, weighted_quantiles, values)
+
+
+def get_percentiles_from_results(model, results, p_minor=5, p_max=95, weights=None, *args, **kargs):
     """Returns an array of percentils `p_minor=5`, median and `p_max=95` of the given model and results.
 
     Args:
@@ -140,6 +178,7 @@ def get_percentiles_from_results(model, results, p_minor=5, p_max=95, *args, **k
         results (list[list[float]]): Result parameters of `model` execution.
         p_minor (int, optional): Smaller percentile. Defaults to 5.
         p_max (int, optional): Bigger percentile. Defaults to 95.
+        weights (list[float]|None): Results weights. Defaults to None.
 
     Returns:
         (list[int, int, list[float]]): First index represents the reference defined in `reference.compartiments`. \
@@ -163,9 +202,16 @@ def get_percentiles_from_results(model, results, p_minor=5, p_max=95, *args, **k
         model.evolve(model, step, *args, **kargs)
         aux = CNP.take(model.state, reference_mask, 0)
         aux_sorted = CNP.sort(aux)
-        results_percentiles[:, 0, step] += CNP.percentile(aux_sorted, p_minor, 1)
-        results_percentiles[:, 1, step] += CNP.median(aux_sorted, 1)
-        results_percentiles[:, 2, step] += CNP.percentile(aux_sorted, p_max, 1)
+        
+        if weights is not None:
+            percentile = lambda x,p: weighted_quantile(x[0], p, weights, True, False)
+        else:
+            percentile = lambda x,p: CNP.percentile(x, p)
+
+        results_percentiles[:, 0, step] += percentile(aux_sorted[0], p_minor)
+        results_percentiles[:, 1, step] += percentile(aux_sorted[0], 50)
+        results_percentiles[:, 2, step] += percentile(aux_sorted[0], p_max)
+
         
     def outer(model, *args, **kargs):
         ...
@@ -179,3 +225,115 @@ def get_percentiles_from_results(model, results, p_minor=5, p_max=95, *args, **k
     model.configuration.update(prev_config)
     
     return results_percentiles
+
+
+def auto_adjust_model_params(model, results, weights=None, params=None):
+    """Adjusts limits of model params. If `params` is specified only those are adjusted.
+
+    Args:
+        model (GenericModel): Model to optimize.
+        results (list[list[float]]): Results from running the model.
+        weights (list[float], optional): Results weights. Defaults to None.
+        params (list[str], optional): Names of params to optimice. Defaults to None.
+    """
+    if weights is not None:
+        percentile = lambda x,p: weighted_quantile(x, p, weights, True, False)
+    else:
+        percentile = lambda x,p: CNP.percentile(x, p)
+         
+    for c, i in model.param_to_index.items():
+        if isinstance(params, list):
+            if isinstance(params[0], str):
+                if c not in params:
+                    continue
+            
+        aux = CNP.sort(results[i+1])
+        _5 = percentile(aux, 5)
+        _50 = percentile(aux, 50)
+        _95 =percentile(aux, 95)
+        M:dict = model.configuration["params"][c]
+        
+        distm = _50 - _5
+        distM = _95 - _50
+        # dist = distm + distM
+        
+        model.configuration["params"][c].update({
+            # "min" : CNP.clip(_50 - dist*(distm/distM), M.get("min_limit", None), M.get("max_limit", None)), # min(_5, (M["min"]+_5)/2),
+            # "max" : CNP.clip(_50 + dist*(distM/distm), M.get("min_limit", None), M.get("max_limit", None)) # max(_95, (M["max"]+_95)/2)
+            "min" : CNP.clip(min(_50 - distm*(distm/distM), (M["min"]+_5)/2), M.get("min_limit", M["min"]), M.get("max_limit", M["max"])),
+            "max" : CNP.clip(max(_50 + distM*(distM/distm), (M["max"]+_95)/2), M.get("min_limit", M["min"]), M.get("max_limit", M["max"]))
+        
+        })
+        
+
+def get_trajecty_selector(model, results, weights, reference=None):
+    """Creates an interactive ploy and histograms of results. When a histogram is cliced the value of
+    that parameter changes to the selected value.
+
+    Args:
+        model (GenericModel): Model used for the trajectory.
+        results (list[list[float]]): Results from running the model.
+        weights (list[float], optional): Results weights. Defaults to None.
+        reference (list[list[float]], optional): If give, is printed to the trajectory. Defaults to None.
+
+    Returns:
+        (dict[str, float]): Dictionary with the manualy selected params.
+    """
+    prev_config = copy.deepcopy(model.configuration)
+    fig_sample, ax_sample = plt.subplots()
+    
+    _range = CNP.arange(model.configuration["simulation"]["n_steps"])
+    
+    # Params used for the trajectory are saved here. This is returned
+    values = {p:v["min"] for p,v in model.configuration["params"].items()}
+    
+    fig, *axes = plt.subplots(1, len(results)-1)
+    for (p, i), ax in zip(model.param_to_index.items(), axes[0]):
+        _5, _50, _95 = weighted_quantile(results[i+1], [5, 50, 95], weights)
+        ax.set_xlabel(p)
+        ax.hist(results[i+1], weights=weights)
+        xlim = ax.get_xlim()
+        ax.vlines(_5, *ax.get_ylim(), 'green')
+        ax.vlines(_50, *ax.get_ylim(), 'black')
+        ax.vlines(_95, *ax.get_ylim(), 'purple')
+        line, _ = ax.plot([(_5+_50)/2,(_5+_50)/2 ],  ax.get_ylim(), 'red', ':')
+        
+        # Define a picker por the param ax
+        def picker_builder(param, vline):
+            def picker(self, event):
+                x = event.xdata
+                # Update values and vline xdata
+                values.update({param:x})
+                vline.set_xdata([x,x])
+                # Update trajectory
+                for data, line in zip(update(), sample_lines):
+                    line.set_ydata(data)
+                
+                fig_sample.canvas.draw_idle()
+                fig.canvas.draw_idle()
+                return True, {}
+            return picker
+            
+        line.set_picker(picker_builder(p, line))
+        values.update({p:(_5+_50)/2})
+        ax.set_xlim(xlim)
+
+    def update():
+        sample, _ = get_model_sample_trajectory(model, **values)
+        return sample
+
+    sample = update()
+    list_of_sample_lines = []
+    for s in sample:
+        list_of_sample_lines.append(_range)
+        list_of_sample_lines.append(s)
+        list_of_sample_lines.append('-')
+        
+    sample_lines = ax_sample.plot(*list_of_sample_lines)
+    if reference is not None:
+        ax_sample.plot(_range, reference, ':', color='black')
+
+    plt.show(block=True)
+    model.configuration.update(prev_config)
+
+    return values

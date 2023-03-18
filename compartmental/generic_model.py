@@ -54,6 +54,11 @@ class GenericModel:
         """
         parameter_manager = ParametersManager(self.configuration, self)
         
+        REFERENCE_OFFSET = self.configuration["reference"].get("offset", 0)
+        # Set offset value if it is a str reference
+        if isinstance(REFERENCE_OFFSET, str):
+            self.configuration["params"][REFERENCE_OFFSET].update({"type":"int"})
+        
         N_SIMULATIONS = self.configuration["simulation"]["n_simulations"]
         self.params = CNP.zeros(
             (len(self.configuration["params"]), N_SIMULATIONS), dtype=CNP.float64
@@ -67,6 +72,11 @@ class GenericModel:
             
         for fparam in self.configuration["fixed_params"].keys():
             setattr(self, fparam, self.fixed_params[self.fixed_param_to_index[fparam]])
+            
+        if isinstance(REFERENCE_OFFSET, str):
+            self.reference_offset = self.params[self.param_to_index[REFERENCE_OFFSET]]
+        else:
+            self.reference_offset = 0
             
         parameter_manager.populate_params(self.params, **kargs)
         parameter_manager.populate_fixed_params(self.fixed_params)
@@ -125,7 +135,8 @@ class GenericModel:
         Returns:
             (list[float]): Distance from simulations to reference(s).
         """
-        diff = CNP.absolute(CNP.take(self.state, reference_mask, 0).T-reference[step])
+        index = CNP.clip(step + CNP.int64(self.reference_offset), 0, self.N_STEPS-1)
+        diff = CNP.absolute(CNP.take(self.state, reference_mask, 0)[0].T-reference[index])
         return CNP.log(diff + 1)
 
 
@@ -141,6 +152,8 @@ class GenericModel:
             save_file (str): Filename of path to file.
         """
         N_EXECUTIONS = self.configuration["simulation"]["n_executions"]
+        REFERENCE_OFFSET = self.configuration["reference"].get("offset", 0)
+        self.N_STEPS = self.configuration["simulation"]["n_steps"]
         
         for execution in range(N_EXECUTIONS):
             progress_bar(f"Model running: ", execution, N_EXECUTIONS, len=min(20, max(N_EXECUTIONS,5)))
@@ -148,7 +161,7 @@ class GenericModel:
             self.populate_model_parameters(**kargs)
             self.populate_model_compartiments(**kargs)
             
-            for step in range(self.configuration["simulation"]["n_steps"]):
+            for step in range(self.N_STEPS):
                 inner(self, step, reference, *inner_args, **kargs)
             outer(self, *outer_args, execution_number=execution, **kargs)
             
@@ -181,7 +194,7 @@ class GenericModel:
         
         def inner(model, step, reference, reference_mask, *args, **kargs):
             model.evolve(model, step, *args, **kargs)
-            self.log_diff[:] += model.get_diff(step, reference, reference_mask)
+            self.log_diff[:,0] += model.get_diff(step, reference, reference_mask)
         
         def outer(model, save_file, *args, **kargs):
             best_params, best_log_diff = get_best_parameters(model.params, model.log_diff, model.configuration["results"]["save_percentage"])
