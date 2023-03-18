@@ -267,7 +267,7 @@ def auto_adjust_model_params(model, results, weights=None, params=None):
         
 
 def get_trajecty_selector(model, results, weights, reference=None):
-    """Creates an interactive ploy and histograms of results. When a histogram is cliced the value of
+    """Creates an interactive plot and histograms of results. When a histogram is clicked the value of
     that parameter changes to the selected value.
 
     Args:
