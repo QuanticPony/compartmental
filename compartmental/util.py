@@ -277,7 +277,7 @@ def get_trajecty_selector(model, results, weights, reference=None):
         reference (list[list[float]], optional): If give, is printed to the trajectory. Defaults to None.
 
     Returns:
-        (dict[str, float]): Dictionary with the manualy selected params.
+        (dict[str, float]): Dictionary with the manually selected params.
     """
     prev_config = copy.deepcopy(model.configuration)
     fig_sample, ax_sample = plt.subplots()
