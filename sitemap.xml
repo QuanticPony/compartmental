@@ -2,37 +2,42 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://QuanticPony.github.io/compartmental/</loc>
-         <lastmod>2023-03-16</lastmod>
+         <lastmod>2023-03-18</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://QuanticPony.github.io/compartmental/LICENSE/</loc>
-         <lastmod>2023-03-16</lastmod>
+         <lastmod>2023-03-18</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://QuanticPony.github.io/compartmental/SUMMARY/</loc>
-         <lastmod>2023-03-16</lastmod>
+         <lastmod>2023-03-18</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://QuanticPony.github.io/compartmental/examples/SEIR/</loc>
-         <lastmod>2023-03-16</lastmod>
+         <lastmod>2023-03-18</lastmod>
+         <changefreq>daily</changefreq>
+    </url>
+    <url>
+         <loc>https://QuanticPony.github.io/compartmental/examples/SIR/</loc>
+         <lastmod>2023-03-18</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://QuanticPony.github.io/compartmental/reference/compartmental/generic_model/</loc>
-         <lastmod>2023-03-16</lastmod>
+         <lastmod>2023-03-18</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://QuanticPony.github.io/compartmental/reference/compartmental/util/</loc>
-         <lastmod>2023-03-16</lastmod>
+         <lastmod>2023-03-18</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://QuanticPony.github.io/compartmental/reference/compartmental/parameters/parameters_manager/</loc>
-         <lastmod>2023-03-16</lastmod>
+         <lastmod>2023-03-18</lastmod>
          <changefreq>daily</changefreq>
     </url>
 </urlset>
