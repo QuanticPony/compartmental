@@ -58,28 +58,22 @@ class GenericModel:
         # Set offset value if it is a str reference
         if isinstance(REFERENCE_OFFSET, str):
             self.configuration["params"][REFERENCE_OFFSET].update({"type":"int"})
-        
-        N_SIMULATIONS = self.configuration["simulation"]["n_simulations"]
-        self.params = CNP.zeros(
-            (len(self.configuration["params"]), N_SIMULATIONS), dtype=CNP.float64
-        )
-        self.fixed_params = CNP.zeros(
-            (len(self.configuration["fixed_params"]), 1), dtype=CNP.float64
-        )
+
+        parameter_manager.populate_params(**kargs)
+        parameter_manager.populate_fixed_params()
         
         for param in self.configuration["params"].keys():
-            setattr(self, param, self.params[self.param_to_index[param]])
+            setattr(self, param, self.params[param])
             
         for fparam in self.configuration["fixed_params"].keys():
             setattr(self, fparam, self.fixed_params[self.fixed_param_to_index[fparam]])
             
         if isinstance(REFERENCE_OFFSET, str):
-            self.reference_offset = self.params[self.param_to_index[REFERENCE_OFFSET]]
+            self.reference_offset = self.params[REFERENCE_OFFSET]
         else:
             self.reference_offset = 0
             
-        parameter_manager.populate_params(self.params, **kargs)
-        parameter_manager.populate_fixed_params(self.fixed_params)
+
         
         
     def populate_model_compartiments(self, **kargs):
@@ -96,7 +90,7 @@ class GenericModel:
             initial_value = C["initial_value"]
             if isinstance(initial_value, str):
                 if initial_value in self.param_to_index.keys():
-                    self.state[i,:] = self.params[self.param_to_index[initial_value]]
+                    self.state[i,:] = self.params[initial_value]
                 continue
             self.state[i,:] = initial_value
            
@@ -135,8 +129,10 @@ class GenericModel:
         Returns:
             (list[float]): Distance from simulations to reference(s).
         """
-        index = CNP.clip(step + CNP.int64(self.reference_offset), 0, self.N_STEPS-1)
-        diff = CNP.absolute(CNP.take(self.state, reference_mask, 0)[0].T-reference[index])
+        index = step + self.__offset
+        diff = CNP.absolute(CNP.take(self.state, reference_mask, 0)[0].T-reference[index], 
+                # To only take the diff on the same range for all simulations
+                where=(self.__min_offset<=index<=self.N_STEPS))
         return CNP.log(diff + 1)
 
 
@@ -152,8 +148,10 @@ class GenericModel:
             save_file (str): Filename of path to file.
         """
         N_EXECUTIONS = self.configuration["simulation"]["n_executions"]
-        REFERENCE_OFFSET = self.configuration["reference"].get("offset", 0)
         self.N_STEPS = self.configuration["simulation"]["n_steps"]
+
+        self.__offset = CNP.int64(self.reference_offset)
+        self.__min_offset: int = self.__offset.min()
         
         for execution in range(N_EXECUTIONS):
             progress_bar(f"Model running: ", execution, N_EXECUTIONS, len=min(20, max(N_EXECUTIONS,5)))
@@ -161,8 +159,11 @@ class GenericModel:
             self.populate_model_parameters(**kargs)
             self.populate_model_compartiments(**kargs)
             
-            for step in range(self.N_STEPS):
+            # for step in range(self.N_STEPS):
+            step = CNP.int64(0)
+            while (self.__offset + step < self.N_STEPS).any():
                 inner(self, step, reference, *inner_args, **kargs)
+                step += 1
             outer(self, *outer_args, execution_number=execution, **kargs)
             
         progress_bar(f"Model running: ", N_EXECUTIONS, N_EXECUTIONS, len=min(20, max(N_EXECUTIONS,5)), end='\n')

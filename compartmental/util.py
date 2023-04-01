@@ -28,12 +28,15 @@ if TYPE_CHECKING:
 def get_best_parameters(params, log_diff, save_percentage):
     "Retuns the best `save_percentage`% `params` of the simulations given their `log_diff` with real data." 
     save_count: int = ceil(log_diff.size*save_percentage*0.01)
-    saved_params = CNP.zeros((save_count, params.shape[0]), dtype=CNP.float64)
+    saved_params = CNP.zeros((save_count, 1), dtype=params.dtype)
     saved_log_diff = CNP.zeros((save_count, 1), dtype=CNP.float64)
 
-    log_diff_index_sorted = CNP.argpartition(log_diff, save_count, 0)[0:save_count]
+    if save_count == log_diff.size:
+        log_diff_index_sorted = CNP.argsort(log_diff, 0)
+    else:
+        log_diff_index_sorted = CNP.argpartition(log_diff, save_count, 0)[0:save_count]
     
-    saved_params[:,:] = CNP.take(params, log_diff_index_sorted, 1)[:,:,0].T
+    saved_params[:] = CNP.take(params, log_diff_index_sorted)
     saved_log_diff[:] = CNP.take(log_diff, log_diff_index_sorted)
     return saved_params, saved_log_diff
 
@@ -63,12 +66,17 @@ def save_parameters_no_diff(file: str, params_names: list[str], params: list[lis
         execution_number (int, optional): Number of the execution. If `0` the header is printed. Defaults to 0.
     """
     with open(file, 'a' if execution_number!=0 else 'w') as file_out:
-        import numpy as np
-        if np != CNP:
-            _params = CNP.asnumpy(params)
-        else:
-            _params = params
-        np.savetxt(file_out, params.T, delimiter=',', comments='', header=",".join(params_names) if execution_number==0 else "")
+        # import numpy as np
+        # if np != CNP:
+        #     _params = CNP.asnumpy(params)
+        # else:
+        #     _params = params
+        # np.savetxt(file_out, params.T, delimiter=',', comments='', header=",".join(params_names) if execution_number==0 else "")
+        import regex as re
+
+        _merged = params
+        file_out.write(",".join(_merged.dtype.names)+"\n")
+        file_out.write(re.sub(r"\[|\]|\(|\)| ", "", CNP.array_str(_merged)))
 
 
 def save_parameters(file: str, params_names: list[str], params: list[list[float]], log_diff: list[float], *, execution_number=0):
@@ -82,15 +90,24 @@ def save_parameters(file: str, params_names: list[str], params: list[list[float]
         execution_number (int, optional): Number of the execution. If `0` the header is printed. Defaults to 0.
     """
     with open(file, 'a' if execution_number!=0 else 'w') as file_out:
-        import numpy as np
-        if np != CNP:
-            np.savetxt(file_out, CNP.asnumpy(CNP.concatenate((log_diff, params), 1)) , delimiter=',', comments='', header=",".join(["log_diff", *params_names]) if execution_number==0 else "")
-        else:
-            _log_diff = log_diff
-            _params = params
-            np.savetxt(file_out, np.concatenate((_log_diff, _params), 1) , delimiter=',', comments='', header=",".join(["log_diff", *params_names]) if execution_number==0 else "")
+        # TODO: check for cupy
+        # import numpy as np
+        import regex as re
+        # if np != CNP:
+        #     np.savetxt(file_out, CNP.asnumpy(CNP.concatenate((log_diff, params), 1)) , delimiter=',', comments='', header=",".join(["log_diff", *params_names]) if execution_number==0 else "")
+        # else:
+        _log_diff = log_diff
+        _params = params
+        _log_diff = CNP.asarray(log_diff, dtype=[("log_diff", CNP.float64)])
+        _merged = CNP.zeros((_params.size,1), dtype=[*_log_diff.dtype.descr, *_params.dtype.descr])
+        _merged["log_diff"] = _log_diff
+        for k in _params.dtype.names:
+            _merged[k] = _params[k]
 
-        
+        file_out.write(",".join(_merged.dtype.names)+"\n")
+        file_out.write(re.sub(r"\[|\]|\(|\)| ", "", CNP.array_str(_merged)))
+            
+
 def load_parameters(file: str):
     """Loads parameters from file with the same format as `save_parameters` and `save_parameters_no_diff`.
 
@@ -129,7 +146,7 @@ def get_model_sample_trajectory(model, *args, **kargs):
         saved_state[step] = model.state[:, 0]
         
     model.configuration.update(prev_config)
-    return saved_state.T, model.params[:, 0]
+    return saved_state.T, model.params[0]
 
 
 def weighted_quantile(values, quantiles, sample_weight=None, values_sorted=False, old_style=False):
@@ -195,22 +212,23 @@ def get_percentiles_from_results(model, results, p_minor=5, p_max=95, weights=No
     model.configuration["simulation"]["n_executions"] = 1
     
     model.populate_model_parameters(*args, **kargs)
-    model.params[:] = results_no_diff[:]
+    for k in model.params.dtype.names:
+        model.params[k] = results_no_diff[model.param_to_index[k]]
+
     model.populate_model_compartiments(*args, **kargs)
+
+    storage = CNP.zeros((model.N_STEPS, model.configuration["simulation"]["n_simulations"]))
+    _range = CNP.arange(model.configuration["simulation"]["n_simulations"])
     
     def inner(model, step, reference, reference_mask, *args, **kargs):
         model.evolve(model, step, *args, **kargs)
         aux = CNP.take(model.state, reference_mask, 0)
-        aux_sorted = CNP.sort(aux)
         
-        if weights is not None:
-            percentile = lambda x,p: weighted_quantile(x[0], p, weights, True, False)
-        else:
-            percentile = lambda x,p: CNP.percentile(x, p)
-
-        results_percentiles[:, 0, step] += percentile(aux_sorted[0], p_minor)
-        results_percentiles[:, 1, step] += percentile(aux_sorted[0], 50)
-        results_percentiles[:, 2, step] += percentile(aux_sorted[0], p_max)
+        # This line is a bit complex, what it does is:
+        # Save in the storage at the correct time the values aux (=values to compare with reference) 
+        # in the same order so that each simulation is treated independently until all simulations stop
+        storage[CNP.clip(model.reference_offset + step, 0, model.configuration["simulation"]["n_steps"]-1),
+             _range] += aux[0][_range] * (model.reference_offset + step < model.configuration["simulation"]["n_steps"])
 
         
     def outer(model, *args, **kargs):
@@ -222,8 +240,19 @@ def get_percentiles_from_results(model, results, p_minor=5, p_max=95, weights=No
         None, None,
         *args, **kargs
     )
+
+    if weights is not None:
+        percentile = lambda x,p: weighted_quantile(x[0], p, weights, True, False)
+    else:
+        percentile = lambda x,p: CNP.percentile(x, p)
+
+    for step in range(model.configuration["simulation"]["n_steps"]):
+        results_percentiles[:, 0, step] += percentile(CNP.sort(storage[step]), p_minor)
+        results_percentiles[:, 1, step] += percentile(CNP.sort(storage[step]), 50)
+        results_percentiles[:, 2, step] += percentile(CNP.sort(storage[step]), p_max)
+
+
     model.configuration.update(prev_config)
-    
     return results_percentiles
 
 
