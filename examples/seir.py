@@ -20,7 +20,7 @@ import numpy
 
 seir_model = {
     "simulation": {
-        "n_simulations": 100000,
+        "n_simulations": 1000000,
         "n_executions": 1,
         "n_steps": 230
     },
@@ -43,6 +43,11 @@ seir_model = {
         "Io": {
             "min": 1e-6,
             "max": 1e-4
+        },
+        "off": {
+            "type": int,
+            "min": -3,
+            "max": 3
         }
     },
     "fixed_params": {
@@ -51,7 +56,8 @@ seir_model = {
         "eta":0.08
     },
     "reference": {
-        "compartiments" : ["R"]
+        "compartiments" : ["R"],
+        "offset": "off"
     },
     "results": {
         "save_percentage": 0.1
@@ -70,7 +76,7 @@ def evolve(m, *args, **kargs):
     
 SeirModel.evolve = evolve
 
-sample, sample_params = gcm.util.get_model_sample_trajectory(SeirModel, **{"betta": 0.2, "Io":6e-5})
+sample, sample_params = gcm.util.get_model_sample_trajectory(SeirModel, **{"off": -2, "betta": 0.2, "Io":6e-5})
 
 
 SeirModel.run(sample[SeirModel.compartiment_name_to_index["R"]], "seir.data")
@@ -89,7 +95,7 @@ try:
 except AttributeError:
     pass
 
-plt.figure()
+plt.subplots()
 plt.fill_between(numpy.arange(percentiles.shape[2]), percentiles[0,0], percentiles[0,2], alpha=0.3)
 plt.plot(sample[SeirModel.compartiment_name_to_index["S"]], 'green')
 plt.plot(sample[SeirModel.compartiment_name_to_index["E"]], 'red')
