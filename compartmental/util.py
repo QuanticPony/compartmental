@@ -138,8 +138,8 @@ def get_model_sample_trajectory(model, *args, **kargs):
     model.configuration["simulation"]["n_simulations"] = 1
     model.configuration["simulation"]["n_executions"] = 1
     
-    model.populate_model_parameters(*args, **kargs)
-    model.populate_model_compartiments(*args, **kargs)
+    model.populate_model_parameters(**kargs)
+    model.populate_model_compartiments(**kargs)
     saved_state = CNP.zeros((model.configuration["simulation"]["n_steps"], model.state.shape[0]))
     for step in range(model.configuration["simulation"]["n_steps"]):
         model.evolve(model, step, *args, **kargs)

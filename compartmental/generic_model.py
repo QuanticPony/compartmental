@@ -130,9 +130,10 @@ class GenericModel:
             (list[float]): Distance from simulations to reference(s).
         """
         index = step + self.__offset
-        diff = CNP.absolute(CNP.take(self.state, reference_mask, 0)[0].T-reference[index], 
-                # To only take the diff on the same range for all simulations
-                where=(self.__min_offset<=index<=self.N_STEPS))
+        # To only take the diff on the same range for all simulations
+        diff = CNP.absolute(CNP.take(self.state, reference_mask, 0)[0].T-reference[index]) * \
+               (self.__min_offset<=index & index<=self.N_STEPS)
+               
         return CNP.log(diff + 1)
 
 
@@ -202,7 +203,7 @@ class GenericModel:
             save_parameters(save_file, model.param_to_index.keys(), best_params, best_log_diff)
             
         self._internal_run_(
-            inner, (reference_mask,), 
+            inner, (reference_mask, *args), 
             outer, (save_file,), 
             reference, save_file, 
             *args, **kargs
