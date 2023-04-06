@@ -1,25 +1,12 @@
-# Copyright 2023 Unai Lería Fortea
-
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-
-#     http://www.apache.org/licenses/LICENSE-2.0
-
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import compartmental 
 compartmental.use_numpy()
 
 import matplotlib.pyplot as plt
 import numpy
+
 model = {
     "simulation": {
-        "n_simulations": 100000,
+        "n_simulations": 200000,
         "n_executions": 1,
         "n_steps": 100
     },
@@ -78,8 +65,8 @@ model = {
         "save_percentage": 0.01
     }
 }
-
 MyModel = compartmental.GenericModel(model)
+p_active = [1 if t<70 else 0 for t in range(model["simulation"]["n_steps"])]
 
 def evolve(m, time, p_active, *args, **kargs):
     ST = m.S + m.Sh
@@ -91,19 +78,17 @@ def evolve(m, time, p_active, *args, **kargs):
     P_infection = p_active[time] * P_infection_active + (1-p_active[time]) * (1-sh*(1-m.phi)) * P_infection_lockdown
 
 
-    m.Sh    = ST * (1-p_active[time])*sh*(1-m.phi)
+    m.Sh[:]    = ST * (1-p_active[time])*sh*(1-m.phi)
     delta_S = ST * P_infection
-    m.S     = (ST - m.Sh)  - delta_S
+    m.S[:]     = (ST - m.Sh)  - delta_S
    
-    m.D     = m.xi * m.Pd
-    m.R     = m.mu * (1-m.IFR)  * m.I + m.R
-    m.Pd    = m.mu * m.IFR  * m.I + (1-m.xi) * m.Pd
-    m.I     = m.eta  * m.E + (1- m.mu) * m.I
-    m.E     = delta_S + (1-m.eta) * m.E
+    m.D[:]     = m.xi * m.Pd
+    m.R[:]     = m.mu * (1-m.IFR)  * m.I + m.R
+    m.Pd[:]    = m.mu * m.IFR  * m.I + (1-m.xi) * m.Pd
+    m.I[:]     = m.eta  * m.E + (1- m.mu) * m.I
+    m.E[:]    = delta_S + (1-m.eta) * m.E
     
 MyModel.evolve = evolve
-
-p_active = [1 if t<70 else 0.1 for t in range(model["simulation"]["n_steps"])]
 
 sample, sample_params = compartmental.util.get_model_sample_trajectory(
     MyModel, p_active,
@@ -115,23 +100,37 @@ sample, sample_params = compartmental.util.get_model_sample_trajectory(
 )
 
 
-ITERS = 7
-# This array is created to store min and max of params configuration in order to see the adjustment in action.
-saved_params_lims = numpy.zeros((len(MyModel.configuration["params"]), 2, ITERS))
+results = compartmental.util.load_parameters("examples/my_model.data")
+weights = numpy.exp(-results[0]/numpy.min(results[0]))
 
-# Main loop of adjustments:
-# 1. Run
-# 2. Read results
-# 3. Compute weights
-# 4. Adjuts configuration
-for i in range(7):
-    MyModel.run(sample[MyModel.compartiment_name_to_index["R"]], f"my_model{i}.data", p_active)
+percentiles = compartmental.util.get_percentiles_from_results(MyModel, results, 30, 70, weights, p_active)#, weights)
+try:
+    # In case cupy is used
+    percentiles = percentiles.get()
+    sample = sample.get()
+    weights = weights.get()
+    results = results.get()
+    sample_params = sample_params.get()
+except AttributeError:
+    pass
+
+# Plot sample with a shadow of the results.
+plt.figure()
+plt.fill_between(numpy.arange(percentiles.shape[2]), percentiles[0,0], percentiles[0,2], alpha=0.3)
+plt.plot(sample[MyModel.compartiment_name_to_index["D"]], 'black')
+plt.plot(numpy.arange(percentiles.shape[2]), percentiles[0,1], '--', color='purple')
+plt.plot(p_active, ':', color='green')
+
+# Histograms with infered likelihood of the parameters
+fig, *axes = plt.subplots(1, len(results)-1)
+fig.set_figheight(4)
+fig.set_figwidth(16)
+for i, ax in enumerate(axes[0], 1):
+    _5, _50, _95 = compartmental.util.weighted_quantile(results[i], [5, 50, 95], weights)
+    ax.hist(results[i], weights=weights)
+    ax.vlines(sample_params[i-1], *ax.get_ylim(), 'red')
+    ax.vlines(_5, *ax.get_ylim(), 'green')
+    ax.vlines(_50, *ax.get_ylim(), 'black')
+    ax.vlines(_95, *ax.get_ylim(), 'purple')
     
-    results = compartmental.util.load_parameters(f"my_model{i}.data")
-    
-    compartmental.util.auto_adjust_model_params(MyModel, results)
-    
-    # Needed to see the max and min evolution in the adjustment
-    for p, v in MyModel.configuration["params"].items():
-        saved_params_lims[MyModel.param_to_index[p], 0, i] = v["min"]
-        saved_params_lims[MyModel.param_to_index[p], 1, i] = v["max"]
+plt.show()

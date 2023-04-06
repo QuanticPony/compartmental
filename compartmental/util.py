@@ -211,13 +211,13 @@ def get_percentiles_from_results(model, results, p_minor=5, p_max=95, weights=No
     model.configuration["simulation"]["n_simulations"] = results.shape[1]
     model.configuration["simulation"]["n_executions"] = 1
     
-    model.populate_model_parameters(*args, **kargs)
+    model.populate_model_parameters(**kargs)
     for k in model.params.dtype.names:
         model.params[k] = results_no_diff[model.param_to_index[k]]
 
-    model.populate_model_compartiments(*args, **kargs)
+    model.populate_model_compartiments(**kargs)
 
-    storage = CNP.zeros((model.N_STEPS, model.configuration["simulation"]["n_simulations"]))
+    storage = CNP.zeros((model.configuration["simulation"]["n_steps"], model.configuration["simulation"]["n_simulations"]))
     _range = CNP.arange(model.configuration["simulation"]["n_simulations"])
     
     def inner(model, step, reference, reference_mask, *args, **kargs):
@@ -235,7 +235,7 @@ def get_percentiles_from_results(model, results, p_minor=5, p_max=95, weights=No
         ...
         
     model._internal_run_(
-        inner, (reference_mask,), 
+        inner, (reference_mask, *args), 
         outer, (), 
         None, None,
         *args, **kargs

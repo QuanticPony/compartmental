@@ -129,10 +129,10 @@ class GenericModel:
         Returns:
             (list[float]): Distance from simulations to reference(s).
         """
-        index = step + self.__offset
+        index = step + self.reference_offset
         # To only take the diff on the same range for all simulations
-        diff = CNP.absolute(CNP.take(self.state, reference_mask, 0)[0].T-reference[index]) * \
-               (self.__min_offset<=index & index<=self.N_STEPS)
+        diff = CNP.absolute(CNP.take(self.state, reference_mask, 0)[0].T-reference[CNP.clip(index, 0, self.N_STEPS-1)]) * \
+               ((self.reference_offset.min()<=index) * (index<=self.N_STEPS))
                
         return CNP.log(diff + 1)
 
@@ -151,8 +151,7 @@ class GenericModel:
         N_EXECUTIONS = self.configuration["simulation"]["n_executions"]
         self.N_STEPS = self.configuration["simulation"]["n_steps"]
 
-        self.__offset = CNP.int64(self.reference_offset)
-        self.__min_offset: int = self.__offset.min()
+        self._min_offset_: int = self.reference_offset.min()
         
         for execution in range(N_EXECUTIONS):
             progress_bar(f"Model running: ", execution, N_EXECUTIONS, len=min(20, max(N_EXECUTIONS,5)))
@@ -162,7 +161,7 @@ class GenericModel:
             
             # for step in range(self.N_STEPS):
             step = CNP.int64(0)
-            while (self.__offset + step < self.N_STEPS).any():
+            while (self.reference_offset + step < self.N_STEPS).any():
                 inner(self, step, reference, *inner_args, **kargs)
                 step += 1
             outer(self, *outer_args, execution_number=execution, **kargs)
