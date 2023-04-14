@@ -12,19 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
  
-import __future__
-from io import TextIOWrapper
+from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import numpy as CNP
 
-from .parameters import ParametersManager
+
 from .util import *
+from .parameters import ParametersManager
+
 import copy
 
 class GenericModel:
-    """Creates a compartimental model from a dictionary and setting an `evolve` method.
+    """Creates a compartmental model from a dictionary and setting an `evolve` method.
     """
 
     def get_all_params_names(self):
@@ -46,7 +47,7 @@ class GenericModel:
         
         self.param_to_index: dict[str, int] = { k:i for i,k in enumerate(self.configuration["params"].keys()) }
         self.fixed_param_to_index: dict[str, int] = { k:i for i,k in enumerate(self.configuration["fixed_params"].keys()) }
-        self.compartiment_name_to_index: dict[str, int] = { k:i for i,k in enumerate(self.configuration["compartiments"].keys()) }
+        self.compartment_name_to_index: dict[str, int] = { k:i for i,k in enumerate(self.configuration["compartments"].keys()) }
 
 
     def populate_model_parameters(self, **kargs):
@@ -76,17 +77,17 @@ class GenericModel:
 
         
         
-    def populate_model_compartiments(self, **kargs):
-        """Populates compartiments array. Assigns shortcuts to call them by their name as an attribute.
+    def populate_model_compartments(self, **kargs):
+        """Populates compartments array. Assigns shortcuts to call them by their name as an attribute.
         """
         N_SIMULATIONS = self.configuration["simulation"]["n_simulations"]
         self.state = CNP.zeros(
-            (len(self.configuration["compartiments"]), N_SIMULATIONS), dtype=CNP.float64
+            (len(self.configuration["compartments"]), N_SIMULATIONS), dtype=CNP.float64
         )
         self.log_diff = CNP.zeros((N_SIMULATIONS, 1), dtype=CNP.float64)
         
-        for c,i in self.compartiment_name_to_index.items():
-            C = self.configuration["compartiments"][c]
+        for c,i in self.compartment_name_to_index.items():
+            C = self.configuration["compartments"][c]
             initial_value = C["initial_value"]
             if isinstance(initial_value, str):
                 if initial_value in self.param_to_index.keys():
@@ -94,18 +95,18 @@ class GenericModel:
                 continue
             self.state[i,:] = initial_value
            
-        for c,i in self.compartiment_name_to_index.items():
-            C = self.configuration["compartiments"][c]
-            minus = C.get("minus_compartiments", False)
+        for c,i in self.compartment_name_to_index.items():
+            C = self.configuration["compartments"][c]
+            minus = C.get("minus_compartments", False)
             if not minus:
                 continue
             if not isinstance(minus, list):
                 minus = [minus]
             for m in minus:
-                self.state[i,:] -= self.state[self.compartiment_name_to_index[m],:]
+                self.state[i,:] -= self.state[self.compartment_name_to_index[m],:]
                 
-        for comp in self.configuration["compartiments"].keys():
-            setattr(self, comp, self.state[self.compartiment_name_to_index[comp]])
+        for comp in self.configuration["compartments"].keys():
+            setattr(self, comp, self.state[self.compartment_name_to_index[comp]])
                 
 
     def evolve(self, step, *args, **kargs):
@@ -132,12 +133,12 @@ class GenericModel:
         index = step + self.reference_offset
         # To only take the diff on the same range for all simulations
         diff = CNP.absolute(CNP.take(self.state, reference_mask, 0)[0].T-reference[CNP.clip(index, 0, self.N_STEPS-1)]) * \
-               ((self.reference_offset.min()<=index) * (index<=self.N_STEPS))
+               ((self.reference_offset.max()<=index) * (index<=self.N_STEPS))
                
         return CNP.log(diff + 1)
 
 
-    def _internal_run_(self, inner, inner_args: list, outer, outer_args:list,  reference, save_file:str, *args, **kargs):
+    def _internal_run_(self, inner, inner_args: list, outer, outer_args:list,  reference, save_file:str, exclude_pupulate:bool=False, *args, **kargs):
         """Internal function that executes the model.
 
         Args:
@@ -147,18 +148,21 @@ class GenericModel:
             outer_args (list): Args given to `outer`.
             reference (list[list[float]]): Reference values used to compare with the simulation.
             save_file (str): Filename of path to file.
+            exclude_populate (bool, optional): If `False` params and compartments are populated with random values. Defaults to False.
         """
         N_EXECUTIONS = self.configuration["simulation"]["n_executions"]
         self.N_STEPS = self.configuration["simulation"]["n_steps"]
 
-        self._min_offset_: int = self.reference_offset.min()
-        
         for execution in range(N_EXECUTIONS):
             progress_bar(f"Model running: ", execution, N_EXECUTIONS, len=min(20, max(N_EXECUTIONS,5)))
-            self.log_diff[:] = 0
-            self.populate_model_parameters(**kargs)
-            self.populate_model_compartiments(**kargs)
             
+            if not exclude_pupulate:
+                self.populate_model_parameters(**kargs)
+                self.populate_model_compartments(**kargs)
+
+            self._min_offset_: int = self.reference_offset.min()
+            self.log_diff[:] = 0
+
             # for step in range(self.N_STEPS):
             step = CNP.int64(0)
             while (self.reference_offset + step < self.N_STEPS).any():
@@ -191,15 +195,15 @@ class GenericModel:
             save_file (str): Filename of path to file.
         """
         
-        reference_mask = CNP.array([self.compartiment_name_to_index[c] for c in self.configuration["reference"]["compartiments"]])
+        reference_mask = CNP.array([self.compartment_name_to_index[c] for c in self.configuration["reference"]["compartments"]])
         
         def inner(model, step, reference, reference_mask, *args, **kargs):
             model.evolve(model, step, *args, **kargs)
             self.log_diff[:,0] += model.get_diff(step, reference, reference_mask)
         
-        def outer(model, save_file, *args, **kargs):
+        def outer(model, save_file, *args, execution_number, **kargs):
             best_params, best_log_diff = get_best_parameters(model.params, model.log_diff, model.configuration["results"]["save_percentage"])
-            save_parameters(save_file, model.param_to_index.keys(), best_params, best_log_diff)
+            save_parameters(save_file, model.param_to_index.keys(), best_params, best_log_diff, execution_number=execution_number)
             
         self._internal_run_(
             inner, (reference_mask, *args), 

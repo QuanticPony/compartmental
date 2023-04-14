@@ -30,10 +30,10 @@ sir_model = {
         "n_executions": 1,
         "n_steps": 130
     },
-    "compartiments": {
+    "compartments": {
         "S": { 
             "initial_value": 1,
-            "minus_compartiments": "I"
+            "minus_compartments": "I"
         },
         "I": { 
             "initial_value": "Io",
@@ -58,7 +58,7 @@ sir_model = {
         "K_mean": 1
     },
     "reference": {
-        "compartiments" : ["R"]
+        "compartments" : ["R"]
     },
     "results": {
         "save_percentage": 0.1
@@ -95,7 +95,7 @@ sample, sample_params = gcm.util.get_model_sample_trajectory(SirModel, **{"betta
 Now we apply the automatic adjustment of the model. Keep in mind it will only work if the initial ranges of the `params` are set close to the optimal values.
 ```py
 for i in range(7):
-    SirModel.run(sample[SirModel.compartiment_name_to_index["R"]], f"sir_temp{i}.data")
+    SirModel.run(sample[SirModel.compartment_name_to_index["R"]], f"sir_temp{i}.data")
     
     results = gcm.util.load_parameters(f"sir_temp{i}.data")
     
@@ -104,7 +104,7 @@ for i in range(7):
 
 Finally we run the model once again to get the final photo:
 ```py
-SirModel.run(sample[SirModel.compartiment_name_to_index["R"]], "sir.data")
+SirModel.run(sample[SirModel.compartment_name_to_index["R"]], "sir.data")
 results = gcm.util.load_parameters("sir.data")
 ```
 
@@ -147,9 +147,9 @@ except AttributeError:
 
 plt.figure()
 plt.fill_between(numpy.arange(percentiles.shape[2]), percentiles[0,0], percentiles[0,2], alpha=0.3)
-plt.plot(sample[SirModel.compartiment_name_to_index["S"]], 'green')
-plt.plot(sample[SirModel.compartiment_name_to_index["I"]], 'orange')
-plt.plot(sample[SirModel.compartiment_name_to_index["R"]], 'brown')
+plt.plot(sample[SirModel.compartment_name_to_index["S"]], 'green')
+plt.plot(sample[SirModel.compartment_name_to_index["I"]], 'orange')
+plt.plot(sample[SirModel.compartment_name_to_index["R"]], 'brown')
 plt.plot(numpy.arange(percentiles.shape[2]), percentiles[0,1], '--', color='purple')
 
 

@@ -38,4 +38,4 @@ def update_packages(CNP):
 
 use_numpy()
 
-GenericModel = generic_model.GenericModel
+from .generic_model import GenericModel

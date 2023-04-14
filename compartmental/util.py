@@ -12,18 +12,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import __future__
+from __future__ import annotations
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    import numpy as CNP
+    from .generic_model import GenericModel
+
 from io import TextIOWrapper
 import matplotlib.pyplot as plt
 
-from typing import TYPE_CHECKING
 
 from math import ceil
 import copy
 
-if TYPE_CHECKING:
-    import numpy as CNP
 
+
+def offset_array(array, offset):
+    """Offsets an array by the given amount.
+
+    Args:
+        array (list): array to be changed.
+        offset (int): offset to apply to the given array.
+    """
+    if (offset > 0):
+        array[offset:] = array[:-offset]
+        array[:offset] = array[0]
+    elif (offset < 0):
+        array[:offset] = array[-offset:]
+        array[offset:] = array[offset-1]
 
 def get_best_parameters(params, log_diff, save_percentage):
     "Retuns the best `save_percentage`% `params` of the simulations given their `log_diff` with real data." 
@@ -104,7 +120,10 @@ def save_parameters(file: str, params_names: list[str], params: list[list[float]
         for k in _params.dtype.names:
             _merged[k] = _params[k]
 
-        file_out.write(",".join(_merged.dtype.names)+"\n")
+        if execution_number==0:
+            file_out.write(",".join(_merged.dtype.names)+"\n")
+        else:
+            file_out.write("\n")
         file_out.write(re.sub(r"\[|\]|\(|\)| ", "", CNP.array_str(_merged)))
             
 
@@ -123,7 +142,7 @@ def load_parameters(file: str):
     return CNP.asarray(results)
 
 
-def get_model_sample_trajectory(model, *args, **kargs):
+def get_model_sample_trajectory(model: GenericModel, *args, **kargs):
     """Executes the model with `n_simulations = 1` and `n_executions = 1`.
     Returns all the intermediate states and the parameters.
 
@@ -133,20 +152,61 @@ def get_model_sample_trajectory(model, *args, **kargs):
     Returns:
         (list[list[float]], list[list[float]]): Tuple of all states history and corresponding params.
     """
-    prev_config = copy.deepcopy(model.configuration)
+    configuration = copy.deepcopy(model.configuration)
+    from . import GenericModel
+    inner_model = GenericModel(configuration)
+    inner_model.evolve = model.evolve
 
-    model.configuration["simulation"]["n_simulations"] = 1
-    model.configuration["simulation"]["n_executions"] = 1
+    inner_model.configuration["simulation"]["n_simulations"] = 1
+    inner_model.configuration["simulation"]["n_executions"] = 1
     
-    model.populate_model_parameters(**kargs)
-    model.populate_model_compartiments(**kargs)
-    saved_state = CNP.zeros((model.configuration["simulation"]["n_steps"], model.state.shape[0]))
-    for step in range(model.configuration["simulation"]["n_steps"]):
-        model.evolve(model, step, *args, **kargs)
-        saved_state[step] = model.state[:, 0]
+    inner_model.populate_model_parameters(**kargs)
+    inner_model.populate_model_compartments(**kargs)
+    saved_state = CNP.zeros((inner_model.configuration["simulation"]["n_steps"], inner_model.state.shape[0]))
+    for step in range(0, inner_model.configuration["simulation"]["n_steps"]-inner_model.reference_offset[0]):
         
-    model.configuration.update(prev_config)
-    return saved_state.T, model.params[0]
+        inner_model.evolve(inner_model, step, *args, **kargs)
+        real_step = step + inner_model.reference_offset[0]
+        
+        saved_state[real_step] = inner_model.state[:, 0]
+        
+    return saved_state.T, inner_model.params[0]
+
+def get_model_sample_trajectory_with_diff_to_reference(model: GenericModel, reference, *args, **kargs):
+    """Executes the model with `n_simulations = 1` and `n_executions = 1`.
+    Returns all the intermediate states and the parameters.
+
+    Args:
+        model (GenericModel): Model to execute.
+        reference (list): Reference to compare with.
+
+    Returns:
+        (list[list[float]], list[list[float]], float): Tuple of all states history and corresponding params and the difference.
+    """
+    configuration = copy.deepcopy(model.configuration)
+    
+    from . import GenericModel
+    inner_model = GenericModel(configuration)
+    inner_model.evolve = model.evolve
+    reference_mask = CNP.array([inner_model.compartment_name_to_index[c] for c in inner_model.configuration["reference"]["compartments"]])
+
+    inner_model.configuration["simulation"]["n_simulations"] = 1
+    inner_model.configuration["simulation"]["n_executions"] = 1
+    inner_model.N_STEPS = inner_model.configuration["simulation"]["n_steps"]
+    
+    inner_model.populate_model_parameters(**kargs)
+    inner_model.populate_model_compartments(**kargs)
+    saved_state = CNP.zeros((inner_model.configuration["simulation"]["n_steps"], inner_model.state.shape[0]))
+    diff = 0
+    for step in range((max(0, inner_model.reference_offset[0])), inner_model.configuration["simulation"]["n_steps"]-inner_model.reference_offset[0]):
+        
+        inner_model.evolve(inner_model, step, *args, **kargs)
+        diff += inner_model.get_diff(step, reference, reference_mask)
+        real_step = step + inner_model.reference_offset[0]
+        
+        saved_state[real_step] = inner_model.state[:, 0]
+
+    return saved_state.T, inner_model.params[0], diff
 
 
 def weighted_quantile(values, quantiles, sample_weight=None, values_sorted=False, old_style=False):
@@ -187,7 +247,7 @@ def weighted_quantile(values, quantiles, sample_weight=None, values_sorted=False
     return CNP.interp(quantiles, weighted_quantiles, values)
 
 
-def get_percentiles_from_results(model, results, p_minor=5, p_max=95, weights=None, *args, **kargs):
+def get_percentiles_from_results(model: GenericModel, results, p_minor=5, p_max=95, weights=None, *args, **kargs):
     """Returns an array of percentils `p_minor=5`, median and `p_max=95` of the given model and results.
 
     Args:
@@ -198,65 +258,70 @@ def get_percentiles_from_results(model, results, p_minor=5, p_max=95, weights=No
         weights (list[float]|None): Results weights. Defaults to None.
 
     Returns:
-        (list[int, int, list[float]]): First index represents the reference defined in `reference.compartiments`. \
+        (list[int, int, list[float]]): First index represents the reference defined in `reference.compartments`. \
             Second index represents  `p_minor`, median or `p_max=`. Final represents the step in the simulation.
     """
-    reference_mask = CNP.array([model.compartiment_name_to_index[c] for c in model.configuration["reference"]["compartiments"]])
+    reference_mask = CNP.array([model.compartment_name_to_index[c] for c in model.configuration["reference"]["compartments"]])
     
     results_no_diff = results[1:]
     results_percentiles = CNP.zeros((reference_mask.shape[0], 3, model.configuration["simulation"]["n_steps"]))
     
     prev_config = copy.deepcopy(model.configuration)
-
-    model.configuration["simulation"]["n_simulations"] = results.shape[1]
-    model.configuration["simulation"]["n_executions"] = 1
+    configuration = copy.deepcopy(model.configuration)
+    configuration["simulation"]["n_simulations"] = results.shape[1]
+    configuration["simulation"]["n_executions"] = 1
     
-    model.populate_model_parameters(**kargs)
-    for k in model.params.dtype.names:
-        model.params[k] = results_no_diff[model.param_to_index[k]]
+    from . import GenericModel
+    inner_model = GenericModel(configuration)
+    inner_model.evolve = model.evolve
 
-    model.populate_model_compartiments(**kargs)
+    inner_model.populate_model_parameters(**kargs)
+    for k in inner_model.params.dtype.names:
+        inner_model.params[k][:] = results_no_diff[inner_model.param_to_index[k]]
 
-    storage = CNP.zeros((model.configuration["simulation"]["n_steps"], model.configuration["simulation"]["n_simulations"]))
-    _range = CNP.arange(model.configuration["simulation"]["n_simulations"])
+    inner_model.populate_model_compartments(**kargs)
+
+    storage = CNP.zeros((configuration["simulation"]["n_steps"], configuration["simulation"]["n_simulations"]))
+    _range = CNP.arange(configuration["simulation"]["n_simulations"])
     
-    def inner(model, step, reference, reference_mask, *args, **kargs):
-        model.evolve(model, step, *args, **kargs)
-        aux = CNP.take(model.state, reference_mask, 0)
+    def inner(_model_, step, reference, reference_mask, *args, **kargs):
+        _model_.evolve(_model_, step, *args, **kargs)
+        aux = CNP.take(_model_.state, reference_mask, 0)
         
-        # This line is a bit complex, what it does is:
-        # Save in the storage at the correct time the values aux (=values to compare with reference) 
+
+        # TODO: improve this so that storage is not bigger than (offset.max - offset.min, n_simulations) 
+        # This line is a bit complex, what it does:
+        # Save in the storage at the correct time for each simulation the values of the aux (=values of state to compare with reference) 
         # in the same order so that each simulation is treated independently until all simulations stop
-        storage[CNP.clip(model.reference_offset + step, 0, model.configuration["simulation"]["n_steps"]-1),
-             _range] += aux[0][_range] * (model.reference_offset + step < model.configuration["simulation"]["n_steps"])
+        storage[CNP.clip(_model_.reference_offset + step, 0, _model_.configuration["simulation"]["n_steps"]-1),
+             _range] += aux[0][_range] * (_model_.reference_offset + step < _model_.configuration["simulation"]["n_steps"])
 
         
-    def outer(model, *args, **kargs):
+    def outer(_model_, *args, **kargs):
         ...
         
-    model._internal_run_(
+    inner_model._internal_run_(
         inner, (reference_mask, *args), 
         outer, (), 
-        None, None,
+        None, None, True,
         *args, **kargs
     )
 
     if weights is not None:
-        percentile = lambda x,p: weighted_quantile(x[0], p, weights, True, False)
+        percentile = lambda x,p: weighted_quantile(x, p, weights, True, False)
     else:
         percentile = lambda x,p: CNP.percentile(x, p)
 
     for step in range(model.configuration["simulation"]["n_steps"]):
-        results_percentiles[:, 0, step] += percentile(CNP.sort(storage[step]), p_minor)
-        results_percentiles[:, 1, step] += percentile(CNP.sort(storage[step]), 50)
-        results_percentiles[:, 2, step] += percentile(CNP.sort(storage[step]), p_max)
+        sort = CNP.sort(storage[step])
+        results_percentiles[:, 0, step] += percentile(sort, p_minor)
+        results_percentiles[:, 1, step] += percentile(sort, 50)
+        results_percentiles[:, 2, step] += percentile(sort, p_max)
 
-
-    model.configuration.update(prev_config)
     return results_percentiles
 
 
-def auto_adjust_model_params(model, results, weights=None, params=None):
+def auto_adjust_model_params(model: GenericModel, results, weights=None, params=None):
     """Adjusts limits of model params. If `params` is specified only those are adjusted.
 
     Args:
@@ -284,18 +349,16 @@ def auto_adjust_model_params(model, results, weights=None, params=None):
         
         distm = _50 - _5
         distM = _95 - _50
-        # dist = distm + distM
+        min_probable_value = _50 - distm*(distm/distM) if distM != 0 else M["min"]
+        max_probable_value = _50 + distM*(distM/distm) if distm != 0 else M["max"]
         
         model.configuration["params"][c].update({
-            # "min" : CNP.clip(_50 - dist*(distm/distM), M.get("min_limit", None), M.get("max_limit", None)), # min(_5, (M["min"]+_5)/2),
-            # "max" : CNP.clip(_50 + dist*(distM/distm), M.get("min_limit", None), M.get("max_limit", None)) # max(_95, (M["max"]+_95)/2)
-            "min" : CNP.clip(min(_50 - distm*(distm/distM), (M["min"]+_5)/2), M.get("min_limit", M["min"]), M.get("max_limit", M["max"])),
-            "max" : CNP.clip(max(_50 + distM*(distM/distm), (M["max"]+_95)/2), M.get("min_limit", M["min"]), M.get("max_limit", M["max"]))
-        
+            "min" : CNP.clip(min(min_probable_value, (M["min"]*4+_5)/5), M.get("min_limit", M["min"]), M.get("max_limit", M["max"])),
+            "max" : CNP.clip(max(max_probable_value, (M["max"]*4+_95)/5), M.get("min_limit", M["min"]), M.get("max_limit", M["max"]))
         })
         
 
-def get_trajecty_selector(model, results, weights, reference=None):
+def get_trajecty_selector(model: GenericModel, results, weights, reference=None, *args, show_only_reference=False):
     """Creates an interactive plot and histograms of results. When a histogram is clicked the value of
     that parameter changes to the selected value.
 
@@ -304,6 +367,7 @@ def get_trajecty_selector(model, results, weights, reference=None):
         results (list[list[float]]): Results from running the model.
         weights (list[float], optional): Results weights. Defaults to None.
         reference (list[list[float]], optional): If give, is printed to the trajectory. Defaults to None.
+        show_only_reference (boolean, optional): If `True` only the values used to compare with the reference are ploted. Defaults to False.
 
     Returns:
         (dict[str, float]): Dictionary with the manually selected params.
@@ -314,7 +378,8 @@ def get_trajecty_selector(model, results, weights, reference=None):
     _range = CNP.arange(model.configuration["simulation"]["n_steps"])
     
     # Params used for the trajectory are saved here. This is returned
-    values = {p:v["min"] for p,v in model.configuration["params"].items()}
+    values = {}
+    compartments_ploted = []
     
     fig, *axes = plt.subplots(1, len(results)-1)
     for (p, i), ax in zip(model.param_to_index.items(), axes[0]):
@@ -326,7 +391,8 @@ def get_trajecty_selector(model, results, weights, reference=None):
         ax.vlines(_50, *ax.get_ylim(), 'black')
         ax.vlines(_95, *ax.get_ylim(), 'purple')
         line, _ = ax.plot([(_5+_50)/2,(_5+_50)/2 ],  ax.get_ylim(), 'red', ':')
-        
+        values.update({p:(_5+_50)/2})
+
         # Define a picker por the param ax
         def picker_builder(param, vline):
             def picker(self, event):
@@ -335,8 +401,14 @@ def get_trajecty_selector(model, results, weights, reference=None):
                 values.update({param:x})
                 vline.set_xdata([x,x])
                 # Update trajectory
-                for data, line in zip(update(), sample_lines):
-                    line.set_ydata(data)
+                data, diff = update()
+                ax.set_title(f"diff={diff}")
+                for compartment, line in zip(compartments_ploted, sample_lines):
+                    if show_only_reference and reference is None:
+                        continue
+                    else:
+                        # offset_array(data[model.compartment_name_to_index[compartment]], int(model.reference_offset[0]))
+                        line.set_ydata(data[model.compartment_name_to_index[compartment]])
                 
                 fig_sample.canvas.draw_idle()
                 fig.canvas.draw_idle()
@@ -344,19 +416,32 @@ def get_trajecty_selector(model, results, weights, reference=None):
             return picker
             
         line.set_picker(picker_builder(p, line))
-        values.update({p:(_5+_50)/2})
         ax.set_xlim(xlim)
 
     def update():
-        sample, _ = get_model_sample_trajectory(model, **values)
-        return sample
+        sample, _, diff = get_model_sample_trajectory_with_diff_to_reference(model, reference, *args, **values)
+        return sample, diff
 
-    sample = update()
+    sample, diff = update()
     list_of_sample_lines = []
-    for s in sample:
-        list_of_sample_lines.append(_range)
-        list_of_sample_lines.append(s)
-        list_of_sample_lines.append('-')
+
+    try:
+        if show_only_reference and reference is not None:
+            for k,i in model.compartment_name_to_index.items():
+                if k in model.configuration["reference"]["compartments"]:
+                    compartments_ploted.append(k)
+                    list_of_sample_lines.append(_range)
+                    list_of_sample_lines.append(sample[i])
+                    list_of_sample_lines.append('-')
+
+        else: 
+            raise KeyError
+    except KeyError:
+        compartments_ploted = list(model.compartment_name_to_index.keys())
+        for s in sample:
+            list_of_sample_lines.append(_range)
+            list_of_sample_lines.append(s)
+            list_of_sample_lines.append('-')
         
     sample_lines = ax_sample.plot(*list_of_sample_lines)
     if reference is not None:

@@ -24,10 +24,10 @@ seir_model = {
         "n_executions": 1,
         "n_steps": 230
     },
-    "compartiments": {
+    "compartments": {
         "S": { 
             "initial_value": 1,
-            "minus_compartiments": "I"
+            "minus_compartments": "I"
         },
         "E": { "initial_value": 0 },
         "I": { 
@@ -56,7 +56,7 @@ seir_model = {
         "eta":0.08
     },
     "reference": {
-        "compartiments" : ["R"],
+        "compartments" : ["R"],
         "offset": "off"
     },
     "results": {
@@ -79,7 +79,7 @@ SeirModel.evolve = evolve
 sample, sample_params = gcm.util.get_model_sample_trajectory(SeirModel, **{"off": -2, "betta": 0.2, "Io":6e-5})
 
 
-SeirModel.run(sample[SeirModel.compartiment_name_to_index["R"]], "seir.data")
+SeirModel.run(sample[SeirModel.compartment_name_to_index["R"]], "seir.data")
 
 results = gcm.util.load_parameters("seir.data")
 weights = numpy.exp(-results[0]/numpy.min(results[0]))
@@ -97,10 +97,10 @@ except AttributeError:
 
 plt.subplots()
 plt.fill_between(numpy.arange(percentiles.shape[2]), percentiles[0,0], percentiles[0,2], alpha=0.3)
-plt.plot(sample[SeirModel.compartiment_name_to_index["S"]], 'green')
-plt.plot(sample[SeirModel.compartiment_name_to_index["E"]], 'red')
-plt.plot(sample[SeirModel.compartiment_name_to_index["I"]], 'orange')
-plt.plot(sample[SeirModel.compartiment_name_to_index["R"]], 'brown')
+plt.plot(sample[SeirModel.compartment_name_to_index["S"]], 'green')
+plt.plot(sample[SeirModel.compartment_name_to_index["E"]], 'red')
+plt.plot(sample[SeirModel.compartment_name_to_index["I"]], 'orange')
+plt.plot(sample[SeirModel.compartment_name_to_index["R"]], 'brown')
 plt.plot(numpy.arange(percentiles.shape[2]), percentiles[0,1], '--', color='purple')
 
 

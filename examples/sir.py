@@ -24,10 +24,10 @@ sir_model = {
         "n_executions": 1,
         "n_steps": 130
     },
-    "compartiments": {
+    "compartments": {
         "S": { 
             "initial_value": 1,
-            "minus_compartiments": "I"
+            "minus_compartments": "I"
         },
         "I": { 
             "initial_value": "Io",
@@ -41,12 +41,6 @@ sir_model = {
             "min_limit": 0.1,
             "max_limit": 0.4
         },
-        "mu": {
-            "min": 0.01,
-            "max": 0.2,
-            "min_limit": 0.01,
-            "max_limit": 0.2
-        },
         "Io": {
             "min": 1e-6,
             "max": 1e-4,
@@ -55,15 +49,17 @@ sir_model = {
         },
         "To": {
             "type": "int",
-            "min": -5,
-            "max": 5
+            "min": 0,
+            "min_limit": 0,
+            "max": 8
         }
     },
     "fixed_params": {
-        "K_mean": 1
+        "K_mean": 1,
+        "mu": 0.08
     },
     "reference": {
-        "compartiments" : ["R"],
+        "compartments" : ["R"],
         "offset": "To"
     },
     "results": {
@@ -82,7 +78,12 @@ def evolve(m, *args, **kargs):
     
 SirModel.evolve = evolve
 
-sample, sample_params = gcm.util.get_model_sample_trajectory(SirModel, **{"To":-2, "betta":0.2, "mu":0.08, "Io": 1e-5})
+OFFSET = 3
+
+sample, sample_params = gcm.util.get_model_sample_trajectory(SirModel, **{"betta":0.2, "Io": 1e-5, "To": OFFSET})
+
+reference = numpy.copy(sample[SirModel.compartment_name_to_index["R"]])
+gcm.util.offset_array(reference, OFFSET)
 
 
 ITERS = 7
@@ -95,12 +96,12 @@ saved_params_lims = numpy.zeros((len(SirModel.configuration["params"]), 2, ITERS
 # 3. Compute weights
 # 4. Adjuts configuration
 for i in range(ITERS):
-    SirModel.run(sample[SirModel.compartiment_name_to_index["R"]], "sir_temp.data")
+    SirModel.run(reference, "sir_temp.data")
     
     results = gcm.util.load_parameters("sir_temp.data")
     weights = numpy.exp(-results[0]/numpy.min(results[0]))
     
-    gcm.util.auto_adjust_model_params(SirModel, results, weights, adjust=[""])
+    gcm.util.auto_adjust_model_params(SirModel, results, weights)
     
     # Needed to see the max and min evolution in the adjustment
     for p, v in SirModel.configuration["params"].items():
@@ -116,8 +117,8 @@ for i, (k,v) in enumerate(SirModel.configuration["params"].items()):
 # Update for final photo with 3M samples
 SirModel.configuration.update({
     "simulation": {
-        "n_simulations": 1000000,
-        "n_executions": 3,
+        "n_simulations": 100000,
+        "n_executions": 10,
         "n_steps": 130
     },
     "results": {
@@ -125,12 +126,12 @@ SirModel.configuration.update({
     }
 })
 
-SirModel.run(sample[SirModel.compartiment_name_to_index["R"]], "sir.data")
+SirModel.run(reference, "sir.data")
 
 results = gcm.util.load_parameters("sir.data")
 weights = numpy.exp(-results[0]/numpy.min(results[0]))
 
-percentiles = gcm.util.get_percentiles_from_results(SirModel, results, 30, 70)#, weights)
+percentiles = gcm.util.get_percentiles_from_results(SirModel, results, 30, 70, weights)
 try:
     # In case cupy is used
     percentiles = percentiles.get()
@@ -143,9 +144,10 @@ except AttributeError:
 
 plt.figure()
 plt.fill_between(numpy.arange(percentiles.shape[2]), percentiles[0,0], percentiles[0,2], alpha=0.3)
-plt.plot(sample[SirModel.compartiment_name_to_index["S"]], 'green')
-plt.plot(sample[SirModel.compartiment_name_to_index["I"]], 'orange')
-plt.plot(sample[SirModel.compartiment_name_to_index["R"]], 'brown')
+plt.plot(sample[SirModel.compartment_name_to_index["S"]], 'green')
+plt.plot(sample[SirModel.compartment_name_to_index["I"]], 'orange')
+plt.plot(sample[SirModel.compartment_name_to_index["R"]], 'black')
+plt.plot(reference, 'brown')
 plt.plot(numpy.arange(percentiles.shape[2]), percentiles[0,1], '--', color='purple')
 
 
@@ -161,5 +163,5 @@ for i, ax in enumerate(axes[0], 1):
 plt.show()
 
 
-values = gcm.util.get_trajecty_selector(SirModel, results, weights, sample[SirModel.compartiment_name_to_index["R"]])
+values = gcm.util.get_trajecty_selector(SirModel, results, weights, reference)
 print(values)
