@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License. -->
 
+# Work in progress
+
 $$
 \begin{equation} \tag{4.3}
     P_{infection} = p(t)\cdot P_{infection}^{active} + (1-p(t))(1-sh(1-\phi))\cdot P_{infection}^{lockdown},
@@ -37,7 +39,7 @@ $$
 
 
 ```json
-my_model_model = {
+model = {
     "simulation": {
         "n_simulations": 1000000,
         "n_executions": 1,
@@ -103,7 +105,7 @@ import compartmental as gcm
 gcm.use_numpy()
 # gcm.use_cupy() # For GPU usage
 
-MyModel = gcm.GenericModel(my_model_model)
+MyModel = gcm.GenericModel(model)
 
 def evolve(m, *args, **kargs):
     p_infected = m.betta * m.K_mean * m.I
@@ -134,18 +136,18 @@ plt.plot(sample[MyModel.compartment_name_to_index["I"]], 'orange')
 plt.plot(sample[MyModel.compartment_name_to_index["R"]], 'brown')
 plt.show()
 ```
-![](../images/my_model_1.png)
+![](../images/seir_1.png)
 
 
 ________
 Now we can use the `sample` and try to infer the values of $\beta$ and $Io$. 
 
 ```py
-MyModel.run(sample[MyModel.compartment_name_to_index["R"]], "my_model.data")
+MyModel.run(sample[MyModel.compartment_name_to_index["R"]], "seir.data")
 ```
-The results are save in the `my_model.data` file. We load them, compute the weights and the percentiles `30` and `70` with:
+The results are save in the `seir.data` file. We load them, compute the weights and the percentiles `30` and `70` with:
 ```py
-results = gcm.util.load_parameters("my_model.data")
+results = gcm.util.load_parameters("seir.data")
 weights = numpy.exp(-results[0]/numpy.min(results[0]))
 
 percentiles = gcm.util.get_percentiles_from_results(MyModel, results, 30, 70)
@@ -165,8 +167,8 @@ for i, ax in enumerate(axes[0], 1):
     
 plt.show()
 ```
-![](../images/my_model_2.png)
-![](../images/my_model_3.png)
+![](../images/seir_2.png)
+![](../images/seir_3.png)
 
 We could also see specific simulations with:
 ```py

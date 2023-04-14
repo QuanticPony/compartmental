@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License. -->
 
+# Work in progress
+
 $$
 \begin{equation} \tag{4.3}
     P_{infection} = p(t)\cdot P_{infection}^{active} + (1-p(t))(1-sh(1-\phi))\cdot P_{infection}^{lockdown},
@@ -37,7 +39,7 @@ $$
 
 
 ```json
-seir_model = {
+model = {
     "simulation": {
         "n_simulations": 1000000,
         "n_executions": 1,
@@ -103,7 +105,7 @@ import compartmental as gcm
 gcm.use_numpy()
 # gcm.use_cupy() # For GPU usage
 
-MyModel = gcm.GenericModel(seir_model)
+MyModel = gcm.GenericModel(model)
 
 def evolve(m, *args, **kargs):
     p_infected = m.betta * m.K_mean * m.I
