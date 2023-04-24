@@ -23,11 +23,11 @@ model = {
         "n_executions": 1,
         "n_steps": 100
     },
-    "compartiments": {
+    "compartments": {
         "Sh": { "initial_value": 0 },
         "S": { 
             "initial_value": 1,
-            "minus_compartiments": "I"
+            "minus_compartments": "I"
         },
         "E": { "initial_value": 0 },
         "I": { 
@@ -59,8 +59,8 @@ model = {
             "max":1/6
         },
         "offset": {
-            "min":0,
-            "max":10
+            "min":4,
+            "max":12
         }
     },
     "fixed_params": {
@@ -71,11 +71,11 @@ model = {
         "eta":1/5.2
     },
     "reference": {
-        "compartiments" : ["D"],
+        "compartments" : ["D"],
         "offset": "offset" 
     },
     "results": { 
-        "save_percentage": 0.01
+        "save_percentage": 1
     }
 }
 
@@ -91,15 +91,15 @@ def evolve(m, time, p_active, *args, **kargs):
     P_infection = p_active[time] * P_infection_active + (1-p_active[time]) * (1-sh*(1-m.phi)) * P_infection_lockdown
 
 
-    m.Sh    = ST * (1-p_active[time])*sh*(1-m.phi)
+    m.Sh[:]    = ST * (1-p_active[time])*sh*(1-m.phi)
     delta_S = ST * P_infection
-    m.S     = (ST - m.Sh)  - delta_S
+    m.S[:]     = (ST - m.Sh)  - delta_S
    
-    m.D     = m.xi * m.Pd
-    m.R     = m.mu * (1-m.IFR)  * m.I + m.R
-    m.Pd    = m.mu * m.IFR  * m.I + (1-m.xi) * m.Pd
-    m.I     = m.eta  * m.E + (1- m.mu) * m.I
-    m.E     = delta_S + (1-m.eta) * m.E
+    m.D[:]     = m.xi * m.Pd
+    m.R[:]     = m.mu * (1-m.IFR)  * m.I + m.R
+    m.Pd[:]    = m.mu * m.IFR  * m.I + (1-m.xi) * m.Pd
+    m.I[:]     = m.eta  * m.E + (1- m.mu) * m.I
+    m.E[:]     = delta_S + (1-m.eta) * m.E
     
 MyModel.evolve = evolve
 
@@ -111,11 +111,12 @@ sample, sample_params = compartmental.util.get_model_sample_trajectory(
         "Io": 1e-6,
         "phi": 0.1,
         "IFR": 0.01,
-        "xi": 1/10}
+        "xi": 1/10,
+        "offset": 8}
 )
 
 
-ITERS = 7
+ITERS = 2
 # This array is created to store min and max of params configuration in order to see the adjustment in action.
 saved_params_lims = numpy.zeros((len(MyModel.configuration["params"]), 2, ITERS))
 
@@ -124,8 +125,8 @@ saved_params_lims = numpy.zeros((len(MyModel.configuration["params"]), 2, ITERS)
 # 2. Read results
 # 3. Compute weights
 # 4. Adjuts configuration
-for i in range(7):
-    MyModel.run(sample[MyModel.compartiment_name_to_index["R"]], f"my_model{i}.data", p_active)
+for i in range(ITERS):
+    MyModel.run(sample[MyModel.compartment_name_to_index["D"]], f"my_model{i}.data", p_active)
     
     results = compartmental.util.load_parameters(f"my_model{i}.data")
     

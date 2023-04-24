@@ -152,7 +152,9 @@ def get_model_sample_trajectory(model: GenericModel, *args, **kargs):
     Returns:
         (list[list[float]], list[list[float]]): Tuple of all states history and corresponding params.
     """
+    reference_mask = CNP.array([model.compartment_name_to_index[c] for c in model.configuration["reference"]["compartments"]])
     configuration = copy.deepcopy(model.configuration)
+
     from . import GenericModel
     inner_model = GenericModel(configuration)
     inner_model.evolve = model.evolve
@@ -163,13 +165,22 @@ def get_model_sample_trajectory(model: GenericModel, *args, **kargs):
     inner_model.populate_model_parameters(**kargs)
     inner_model.populate_model_compartments(**kargs)
     saved_state = CNP.zeros((inner_model.configuration["simulation"]["n_steps"], inner_model.state.shape[0]))
-    for step in range(0, inner_model.configuration["simulation"]["n_steps"]-inner_model.reference_offset[0]):
+
+    def inner(_model_, step, reference, reference_mask, *args, **kargs):
+        _model_.evolve(_model_, step, *args, **kargs)
+        saved_state[step] = _model_.state[:, 0]
+
+    def outer(_model_, *args, **kargs):
+        ...
         
-        inner_model.evolve(inner_model, step, *args, **kargs)
-        real_step = step + inner_model.reference_offset[0]
+    inner_model._internal_run_(
+        inner, (reference_mask, *args), 
+        outer, (), 
+        None, None, True,
+        *args, **kargs
+    )
         
-        saved_state[real_step] = inner_model.state[:, 0]
-        
+    offset_array(saved_state, inner_model.reference_offset[0])
     return saved_state.T, inner_model.params[0]
 
 def get_model_sample_trajectory_with_diff_to_reference(model: GenericModel, reference, *args, **kargs):
@@ -183,6 +194,7 @@ def get_model_sample_trajectory_with_diff_to_reference(model: GenericModel, refe
     Returns:
         (list[list[float]], list[list[float]], float): Tuple of all states history and corresponding params and the difference.
     """
+    reference_mask = CNP.array([model.compartment_name_to_index[c] for c in model.configuration["reference"]["compartments"]])
     configuration = copy.deepcopy(model.configuration)
     
     from . import GenericModel
@@ -197,16 +209,25 @@ def get_model_sample_trajectory_with_diff_to_reference(model: GenericModel, refe
     inner_model.populate_model_parameters(**kargs)
     inner_model.populate_model_compartments(**kargs)
     saved_state = CNP.zeros((inner_model.configuration["simulation"]["n_steps"], inner_model.state.shape[0]))
-    diff = 0
-    for step in range((max(0, inner_model.reference_offset[0])), inner_model.configuration["simulation"]["n_steps"]-inner_model.reference_offset[0]):
-        
-        inner_model.evolve(inner_model, step, *args, **kargs)
-        diff += inner_model.get_diff(step, reference, reference_mask)
-        real_step = step + inner_model.reference_offset[0]
-        
-        saved_state[real_step] = inner_model.state[:, 0]
+    log_diff = CNP.zeros((1))
 
-    return saved_state.T, inner_model.params[0], diff
+    def inner(_model_, step, reference, reference_mask, *args, **kargs):
+        _model_.evolve(_model_, step, *args, **kargs)
+        log_diff[0] += inner_model.get_diff(step, reference, reference_mask)[0]
+        saved_state[step] = _model_.state[:, 0]
+
+    def outer(_model_, *args, **kargs):
+        ...
+        
+    inner_model._internal_run_(
+        inner, (reference_mask, *args), 
+        outer, (), 
+        reference, None, True,
+        *args, **kargs
+    )
+        
+    offset_array(saved_state, inner_model.reference_offset[0])
+    return saved_state.T, inner_model.params[0], log_diff
 
 
 def weighted_quantile(values, quantiles, sample_weight=None, values_sorted=False, old_style=False):
@@ -407,7 +428,6 @@ def get_trajecty_selector(model: GenericModel, results, weights, reference=None,
                     if show_only_reference and reference is None:
                         continue
                     else:
-                        # offset_array(data[model.compartment_name_to_index[compartment]], int(model.reference_offset[0]))
                         line.set_ydata(data[model.compartment_name_to_index[compartment]])
                 
                 fig_sample.canvas.draw_idle()

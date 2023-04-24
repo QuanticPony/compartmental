@@ -138,7 +138,7 @@ class GenericModel:
         return CNP.log(diff + 1)
 
 
-    def _internal_run_(self, inner, inner_args: list, outer, outer_args:list,  reference, save_file:str, exclude_pupulate:bool=False, *args, **kargs):
+    def _internal_run_(self, inner, inner_args: list, outer, outer_args:list,  reference, save_file:str, *args, exclude_pupulate:bool=False, **kargs):
         """Internal function that executes the model.
 
         Args:
@@ -182,7 +182,7 @@ class GenericModel:
         self._internal_run_(
             self.evolve, args, 
             save_parameters_no_diff, (save_file, self.param_to_index.keys(),  self.params), 
-            None, save_file, 
+            None, save_file,
             *args, **kargs
         )
 

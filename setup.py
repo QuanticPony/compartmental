@@ -1,4 +1,4 @@
 from setuptools import setup
 
 if __name__=='__main__':
-	setup(packages=["compartmental"])
+	setup(name="compartmental", packages=["compartmental"])
