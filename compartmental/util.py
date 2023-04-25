@@ -176,8 +176,8 @@ def get_model_sample_trajectory(model: GenericModel, *args, **kargs):
     inner_model._internal_run_(
         inner, (reference_mask, *args), 
         outer, (), 
-        None, None, True,
-        *args, **kargs
+        None, None,
+        *args, exclude_pupulate=True, **kargs
     )
         
     offset_array(saved_state, inner_model.reference_offset[0])
@@ -222,8 +222,8 @@ def get_model_sample_trajectory_with_diff_to_reference(model: GenericModel, refe
     inner_model._internal_run_(
         inner, (reference_mask, *args), 
         outer, (), 
-        reference, None, True,
-        *args, **kargs
+        reference, None,
+        *args, exclude_pupulate=True, **kargs
     )
         
     offset_array(saved_state, inner_model.reference_offset[0])
@@ -255,7 +255,7 @@ def weighted_quantile(values, quantiles, sample_weight=None, values_sorted=False
 
     if not values_sorted:
         sorter = CNP.argsort(values)
-        values = values[sorter]
+        values = CNP.copy(values[sorter])
         sample_weight = sample_weight[sorter]
 
     weighted_quantiles = CNP.cumsum(sample_weight) - 0.5 * sample_weight
@@ -324,12 +324,12 @@ def get_percentiles_from_results(model: GenericModel, results, p_minor=5, p_max=
     inner_model._internal_run_(
         inner, (reference_mask, *args), 
         outer, (), 
-        None, None, True,
-        *args, **kargs
+        None, None,
+        *args, exclude_pupulate=True, **kargs
     )
 
     if weights is not None:
-        percentile = lambda x,p: weighted_quantile(x, p, weights, True, False)
+        percentile = lambda x,p: weighted_quantile(x, p, weights, False, False)
     else:
         percentile = lambda x,p: CNP.percentile(x, p)
 
