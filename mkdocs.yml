@@ -23,7 +23,7 @@ watch: [README.md, compartmental, examples]
 
 nav:
 - Home:
-  - Overview: index.md
+  - Overview: README.md
   - License: LICENSE.md
 - Code Reference: reference/
 - Examples: examples/
@@ -34,16 +34,16 @@ theme:
     # Palette toggle for dark mode
     - media: "(prefers-color-scheme: light)"
       scheme: slate
-      primary: cyan
-      accent: light-blue
+      primary: black
+      accent: grey
       toggle:
         icon: material/brightness-7
         name: Switch to light mode
     # Palette toggle for light mode
     - media: "(prefers-color-scheme: dark)"
       scheme: default
-      primary: cyan
-      accent: light-blue
+      primary: black
+      accent: grey
       toggle:
         icon: material/brightness-3 
         name: Switch to dark mode

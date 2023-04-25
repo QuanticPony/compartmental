@@ -6,5 +6,6 @@
         * [util](reference/compartmental/util.md)
 * examples
     * examples
+        * [MY_MODEL](examples/MY_MODEL.md)
         * [SEIR](examples/SEIR.md)
         * [SIR](examples/SIR.md)

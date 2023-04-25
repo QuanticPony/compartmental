@@ -30,10 +30,10 @@ seir_model = {
         "n_executions": 1, // (3)
         "n_steps": 230 // (4)
     },
-    "compartiments": { // (5)
+    "compartments": { // (5)
         "S": { 
             "initial_value": 1, // (6)
-            "minus_compartiments": "I" // (7)
+            "minus_compartments": "I" // (7)
         },
         "E": { "initial_value": 0 },
         "I": { 
@@ -57,7 +57,7 @@ seir_model = {
         "eta":0.08
     },
     "reference": { // (12)
-        "compartiments" : ["R"]
+        "compartments" : ["R"]
     },
     "results": { 
         "save_percentage": 0.01 // (13)
@@ -70,17 +70,17 @@ seir_model = {
 3.  Number of times the simulation runs
 4.  Number of times the evolution function is executed each simulation
 
-5.  Here we define the compartiments of the model. Each field must be unique
+5.  Here we define the compartments of the model. Each field must be unique
 6.  Initial value set to a fixed number
-7.  You subtract the value of other compartiments after all of them are initialized
-8.  You can set the initial value of compartiments as parameters
+7.  You subtract the value of other compartments after all of them are initialized
+8.  You can set the initial value of compartments as parameters
 
 9.  Here we define parameters that will be randomly generated for each simulation. Each field must be unique
 10. A min value and max value must be set for each parameter
 
 11. Definition of constant for all the simulations
 
-12. Definition of which compartiments the results should be compared with
+12. Definition of which compartments the results should be compared with
 
 13. Percentage of simulations that will be saved. The best of course
 
@@ -115,10 +115,10 @@ Plotting the `sample` yields:
 
 ```py
 import matplotlib.pyplot as plt
-plt.plot(sample[SeirModel.compartiment_name_to_index["S"]], 'green')
-plt.plot(sample[SeirModel.compartiment_name_to_index["E"]], 'red')
-plt.plot(sample[SeirModel.compartiment_name_to_index["I"]], 'orange')
-plt.plot(sample[SeirModel.compartiment_name_to_index["R"]], 'brown')
+plt.plot(sample[SeirModel.compartment_name_to_index["S"]], 'green')
+plt.plot(sample[SeirModel.compartment_name_to_index["E"]], 'red')
+plt.plot(sample[SeirModel.compartment_name_to_index["I"]], 'orange')
+plt.plot(sample[SeirModel.compartment_name_to_index["R"]], 'brown')
 plt.show()
 ```
 ![](../images/seir_1.png)
@@ -128,7 +128,7 @@ ________
 Now we can use the `sample` and try to infer the values of $\beta$ and $Io$. 
 
 ```py
-SeirModel.run(sample[SeirModel.compartiment_name_to_index["R"]], "seir.data")
+SeirModel.run(sample[SeirModel.compartment_name_to_index["R"]], "seir.data")
 ```
 The results are save in the `seir.data` file. We load them, compute the weights and the percentiles `30` and `70` with:
 ```py
@@ -142,7 +142,7 @@ Finally plot the reference values with the percentiles and histograms for the pa
 ```py
 plt.figure()
 plt.fill_between(numpy.arange(percentiles.shape[2]), percentiles[0,0], percentiles[0,2], alpha=0.3)
-plt.plot(sample[SeirModel.compartiment_name_to_index["R"]], 'black')
+plt.plot(sample[SeirModel.compartment_name_to_index["R"]], 'black')
 plt.plot(numpy.arange(percentiles.shape[2]), percentiles[0,1], '--', color='purple')
 
 fig, *axes = plt.subplots(1, len(results)-1)
