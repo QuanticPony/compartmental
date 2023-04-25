@@ -23,7 +23,7 @@ watch: [README.md, compartmental, examples]
 
 nav:
 - Home:
-  - Overview: index.md
+  - Overview: README.md
   - License: LICENSE.md
 - Code Reference: reference/
 - Examples: examples/

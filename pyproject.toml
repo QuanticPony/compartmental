@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "compartmental"
-version = "0.0.3"
+version = "0.1.0"
 requires-python = ">=3.8"
 
 description = "Compartmental models with ABC inference optimized for GPU use"
@@ -20,9 +20,17 @@ maintainers = [
 readme = "README.md"
 license = { text="Apache License 2.0"}
 
-keywords = []
+keywords = ["compartmental models", "fit", "analysis", "ABC", "computation"]
 
-classifiers = []
+classifiers = [
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Topic :: Education",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Visualization"]
 
 dependencies = ['numpy']
 
@@ -31,7 +39,7 @@ dependencies = ['numpy']
 "Documentation" = "https://QuanticPony/.github.io/compartmental/"
 
 [tool.bumpver]
-current_version = "0.0.3"
+current_version = "0.1.0"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message = "Update version: {old_version} -> {new_version}"
 commit = true

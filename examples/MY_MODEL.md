@@ -17,6 +17,8 @@ This examples follows the model exposed in my [Physics Undergraduate Thesis Proj
 
 
 The main equations of the model are the following:
+
+
 $$
 \begin{align}
     \tag{4.5} S_h[t+1]    &= S_T[t] \cdot (1-p(t))sh (1-\phi)\\
@@ -29,18 +31,17 @@ $$
 \end{align}
 $$
 
-Where:
-$$
-\begin{equation} \tag{4.3}
-    P_{infection} = p(t)\cdot P_{infection}^{active} + (1-p(t))(1-sh(1-\phi))\cdot P_{infection}^{lockdown},
-\end{equation}
-$$
+Where 
+
 
 $$
-\begin{equation*}
-    P_{infection}^{j} = 1- \left(1-\lambda\frac{I}{N}\right)^{\left<k_j\right>}; \quad \textrm{with} \quad j=active, lockdown.
-\end{equation*}
+\begin{align} 
+    \tag{4.3} P_{infection} &= p(t)\cdot P_{infection}^{active} + (1-p(t))(1-sh(1-\phi))\cdot P_{infection}^{lockdown}, \\
+    P_{infection}^{j} &= 1- \left(1-\lambda\frac{I}{N}\right)^{\left<k_j\right>}; \quad \textrm{with} \quad j=active, lockdown.\\
+    sh &= (1-\frac{I}{N})^{\sigma-1}
+\end{align}
 $$
+
 
 The configuration could be:
 
