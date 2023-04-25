@@ -352,7 +352,7 @@ def auto_adjust_model_params(model: GenericModel, results, weights=None, params=
         params (list[str], optional): Names of params to optimice. Defaults to None.
     """
     if weights is not None:
-        percentile = lambda x,p: weighted_quantile(x, p, weights, True, False)
+        percentile = lambda x,p: weighted_quantile(x, p, weights, False, False)
     else:
         percentile = lambda x,p: CNP.percentile(x, p)
          
@@ -370,13 +370,38 @@ def auto_adjust_model_params(model: GenericModel, results, weights=None, params=
         
         distm = _50 - _5
         distM = _95 - _50
-        min_probable_value = _50 - distm*(distm/distM) if distM != 0 else M["min"]
-        max_probable_value = _50 + distM*(distM/distm) if distm != 0 else M["max"]
+
+        TYPE = M.get("type", "float64")
+        if "int" in TYPE:
+            MIN = _5 - 1 
+            MAX = _95 + 1
+        else :
+            MIN = _5 * 0.5
+            MAX = _95 * 2
         
-        model.configuration["params"][c].update({
-            "min" : CNP.clip(min(min_probable_value, (M["min"]*4+_5)/5), M.get("min_limit", M["min"]), M.get("max_limit", M["max"])),
-            "max" : CNP.clip(max(max_probable_value, (M["max"]*4+_95)/5), M.get("min_limit", M["min"]), M.get("max_limit", M["max"]))
-        })
+
+
+        min_probable_value = _5 - distM if distM != 0 else MAX
+        max_probable_value = _95 + distm if distm != 0 else MIN
+
+        # print(f"""{c}:
+        #     min: {min_probable_value},\t {0.9 * (M["min"]*4+_5)/5},\t {M.get("min_limit", None)}
+        #     max: {max_probable_value},\t {1.1 * (M["max"]*4+_95)/5},\t {M.get("max_limit", None)}
+        #     """)
+        
+        # TODO: make a gaussian kernel to infer when probability is 0 and assing as min or max
+        MAX = M.get("max_limit", None)
+        MIN = M.get("min_limit", None)
+        if (MAX is not None) or (MIN is not None):
+            model.configuration["params"][c].update({
+                "min" : CNP.clip(min(min_probable_value, 0.9 * (M["min"]*2+_5)/3), MIN, MAX),
+                "max" : CNP.clip(max(max_probable_value, 1.1 * (M["max"]*2+_95)/3), MIN, MAX)
+            })
+        else:
+            model.configuration["params"][c].update({
+                "min" :min(min_probable_value, 0.9 * (M["min"]*2+_5)/3),
+                "max" :max(max_probable_value, 1.1 * (M["max"]*2+_95)/3)
+            })
         
 
 def get_trajecty_selector(model: GenericModel, results, weights, reference=None, *args, show_only_reference=False):
