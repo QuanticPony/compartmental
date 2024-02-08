@@ -41,11 +41,83 @@ Utility tools for Approximate Bayesian computation on compartmental models
 
 </h3>
 
-
-
-
-
 </div>
+
+
+# SIR Example
+(Example taken from [examples](https://quanticpony.github.io/compartmental/examples/SIR/))
+
+To make a SIR model you will need a configuration and an evolution function:
+```json
+sir_model = {
+    "simulation": {
+        "n_simulations": 100000,
+        "n_executions": 1,
+        "n_steps": 130
+    },
+    "compartments": {
+        "S": { 
+            "initial_value": 1,
+            "minus_compartments": "I"
+        },
+        "I": { 
+            "initial_value": "Io",
+        },
+        "R": { "initial_value": 0 },
+    },
+    "params": {
+        "betta": {
+            "min": 0.1,
+            "max": 0.4
+        },
+        "mu": {
+            "min": 0.01,
+            "max": 0.2
+        },
+        "Io": {
+            "min": 1e-6,
+            "max": 1e-4
+        }
+    },
+    "fixed_params": {
+        "K_mean": 1
+    },
+    "reference": {
+        "compartments" : ["R"]
+    },
+    "results": {
+        "save_percentage": 0.1
+    }
+}
+```
+
+```python
+import compartmental as gcm
+gcm.use_cupy() // or numpy in case you don't have access to a gpu.
+
+
+SirModel = gcm.GenericModel(sir_model)
+
+def evolve(m, *args, **kargs):
+    p_infected = m.betta * m.K_mean * m.I
+
+    m.R += m.mu * m.I
+    m.I += m.S * p_infected - m.I * m.mu
+    m.S -= m.S * p_infected
+
+SirModel.evolve = evolve
+```
+
+That's it! 
+
+You can now execute it on your GPU and fit the model to some data. [Have a look at the example!](https://quanticpony.github.io/compartmental/examples/SIR/)
+
+![image](https://github.com/QuanticPony/compartmental/assets/67756626/fdd7147c-a0c1-48c1-bac8-335257f1c3ee)
+
+
+Or have a look into a more elavorated model [here](https://quanticpony.github.io/compartmental/examples/MY_MODEL/).
+![image](https://github.com/QuanticPony/compartmental/assets/67756626/613cf6fd-e38e-428f-a088-dd7b822bf54c)
+
 
 # Instalation
 **compartmental** releases are available as wheel packages on [PyPI](https://pypi.org/project/compartmental/). You can install the last version using `pip`:
